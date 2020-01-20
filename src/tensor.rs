@@ -1,7 +1,7 @@
 extern crate rand;
 extern crate rand_distr;
 
-use std::ops::{Index, IndexMut, Mul, Add, Sub, Div};
+use std::ops::{Index, IndexMut, Mul, Add, Sub, Div, SubAssign};
 use std::fmt;
 use std::fmt::Display;
 use rand::prelude::*;
@@ -11,13 +11,13 @@ use rand_distr::StandardNormal;
 pub struct Tensor {
     pub shape: Vec<usize>,
     values: Vec<f32>,
-    pub gradient: Option<Vec<f32>>
+    pub gradient: Option<Box<Tensor>>
 }
 
 impl Tensor {
-    pub fn new(values:Vec<f32>, shape: Vec<usize>) -> Tensor {
+    pub fn new(values:Vec<f32>, shape: &[usize]) -> Tensor {
         Tensor {
-            shape: shape,
+            shape: shape.to_vec(),
             values: values,
             gradient: None
         }
@@ -66,24 +66,44 @@ impl Tensor {
 
     //TODO: redo on 1D vec, this seems very inefficent
     pub fn T(&self) -> Tensor {
-        let mut t = self.clone();
-        let new_shape = [t.shape[1], t.shape[0]];
+        let mut transposed = self.clone();
+        let new_shape = [transposed.shape[1], transposed.shape[0]];
         for i in 0..self.shape[0] {
             for j in 0..self.shape[1] {
-                t.values.swap(flatten_indices(&self, [i, j]), flatten_indices2(new_shape, [j, i]));
+                transposed.values.swap(flatten_indices(&self, [i, j]), flatten_indices2(new_shape, [j, i]));
             }
         }
-        t.shape = new_shape.to_vec();
+        transposed.shape = new_shape.to_vec();
+        transposed
+    }
+
+    pub fn is_bigger(&self, scalar: f32) -> Tensor {
+        let mut t = Tensor::zeros(&[self.shape[0], self.shape[1]]);
+        for i in 0..t.values.len() {
+            if t.values[i] > scalar {
+                t.values[i] = 1.;
+            }
+        }
+        t
+    }
+
+    pub fn is_smaller(&self, scalar: f32) -> Tensor {
+        let mut t = Tensor::zeros(&[self.shape[0], self.shape[1]]);
+        for i in 0..t.values.len() {
+            if t.values[i] < scalar {
+                t.values[i] = 1.;
+            }
+        }
         t
     }
 }
 
 fn length_flat_indices(indices: &[usize]) -> usize {
-    let mut u = 1;
+    let mut total_length = 1;
     for i in 0..indices.len() {
-        u *= indices[i];
+        total_length *= indices[i];
     }
-    u
+    total_length
 }
 
 fn flatten_indices(tensor: &Tensor, indices: [usize; 2]) -> usize {
@@ -249,6 +269,20 @@ impl Mul<&Tensor> for f32 {
     }
 }
 
+impl Div<f32> for Tensor {
+    type Output = Tensor;
+
+    fn div(mut self, rhs: f32) -> Tensor {
+
+        for i in 0..self.shape[0] {
+            for j in 0..self.shape[1] {
+                self[[i, j]] /= rhs;
+            }
+        }
+        self
+    }
+}
+
 impl Div<f32> for &Tensor {
     type Output = Tensor;
 
@@ -293,6 +327,41 @@ impl Sub<&Tensor> for &Tensor {
             }
         }
         t
+    }
+}
+
+impl SubAssign<f32> for &mut Tensor {
+    fn sub_assign(&mut self, rhs: f32) {
+
+        for i in 0..self.shape[0] {
+            for j in 0..self.shape[1] {
+                self[[i, j]] -= rhs;
+            }
+        }
+    }
+}
+
+impl SubAssign<&Tensor> for &mut Tensor {
+    fn sub_assign(&mut self, rhs: &Tensor) {
+        assert!(self.shape[0] == rhs.shape[0] && self.shape[1] == rhs.shape[1]);
+
+        for i in 0..self.shape[0] {
+            for j in 0..self.shape[1] {
+                self[[i, j]] -= rhs[[i, j]];
+            }
+        }
+    }
+}
+
+impl SubAssign<&Tensor> for Tensor {
+    fn sub_assign(&mut self, rhs: &Tensor) {
+        assert!(self.shape[0] == rhs.shape[0] && self.shape[1] == rhs.shape[1]);
+
+        for i in 0..self.shape[0] {
+            for j in 0..self.shape[1] {
+                self[[i, j]] -= rhs[[i, j]];
+            }
+        }
     }
 }
 

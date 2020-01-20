@@ -16,6 +16,10 @@ pub trait Layer {
         self.backward(output);
     }
 
+    fn get_parameters(&mut self) -> Vec<&mut Tensor> {
+        Vec::new()
+    }
+
     fn get_input(&mut self) -> &mut Tensor;
 
     fn set_input(&mut self, tensor: Tensor);

@@ -20,7 +20,7 @@ impl Layer for ReLU {
     } 
 
     fn backward(&mut self, output: &Tensor) {
-        self.input.gradient = Some(output.to_vec().iter().map(|x| ((x > &0.) as i32 as f32) ).collect())
+        self.input.gradient = Some(Box::new(output.is_bigger(0.)))
     }
 
     fn get_input(&mut self) -> &mut Tensor {

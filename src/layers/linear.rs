@@ -13,7 +13,7 @@ impl Linear {
 
         Linear {
             input: Tensor::zeros(&[shape[0], 1]),
-            weights: Tensor::rand(&shape),
+            weights: Tensor::rand(&shape)/((shape[1] as f32).sqrt()), // He/Kaiming initialization?
             biases: Tensor::zeros(&[shape[0], 1])
         }
     }
@@ -26,16 +26,16 @@ impl Layer for Linear {
     } 
 
     fn backward(&mut self, output: &Tensor) {
-        //Redo
-        let grad = output.gradient.as_ref().unwrap();
-        let l = grad.len();
-        let v = vec![l, 1];
-        let grad_tensor = Tensor::new(grad.clone(), vec![l, 1]);
+        let grad = output.gradient.as_ref().unwrap().as_ref();
 
-        self.input.gradient = Some((&self.weights.T()*&grad_tensor).to_vec());
-        self.weights.gradient = Some((&grad_tensor*&self.get_input().T()).to_vec());
-        self.biases.gradient = Some(grad.clone());
+        self.input.gradient = Some(Box::new(&self.weights.T()*grad));
+        self.weights.gradient = Some(Box::new(grad*&self.get_input().T()));
+        self.biases.gradient = Some(Box::new(grad.clone()));
 
+    }
+
+    fn get_parameters(&mut self) ->  Vec<&mut Tensor> {
+        vec!(&mut self.weights, &mut self.biases)
     }
 
     fn get_input(&mut self) -> &mut Tensor {
