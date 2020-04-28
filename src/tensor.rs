@@ -17,14 +17,14 @@ pub struct Tensor {
 impl Tensor {
     pub fn new(values:Vec<f32>, shape: &[usize]) -> Tensor {
         Tensor {
-            shape: shape.to_vec(),
+            shape: create_vector_with_min_length(shape, 4),
             values: values,
             gradient: None
         }
     }
     pub fn zeros(shape: &[usize]) -> Tensor {
         Tensor {
-            shape: shape.to_vec(),
+            shape: create_vector_with_min_length(shape, 4),
             values: vec![0.; length_flat_indices(shape)],
             gradient: None
         }
@@ -32,7 +32,7 @@ impl Tensor {
 
     pub fn ones(shape: &[usize]) -> Tensor {
         Tensor {
-            shape: shape.to_vec(),
+            shape: create_vector_with_min_length(shape, 4),
             values: vec![1.; length_flat_indices(shape)],
             gradient: None
         }
@@ -41,7 +41,7 @@ impl Tensor {
     pub fn rand(shape: &[usize]) -> Tensor {
         let mut rng = thread_rng();
         Tensor {
-            shape: shape.to_vec(),
+            shape: create_vector_with_min_length(shape, 4),
             values: (0..length_flat_indices(shape)).map(|_| rng.sample(StandardNormal)).collect(),
             gradient: None
         }
@@ -98,6 +98,18 @@ impl Tensor {
     }
 }
 
+fn create_vector_with_min_length(s_vec: &[usize], min_length: usize) -> Vec<usize>{
+    let mut t_shape: Vec<usize>;
+    if s_vec.len() < min_length {
+        t_shape = vec![1, min_length-s_vec.len()];
+        t_shape.append(&mut s_vec.to_vec());
+    }
+    else {
+        t_shape = s_vec.to_vec();
+    }
+    t_shape
+}
+
 fn length_flat_indices(indices: &[usize]) -> usize {
     let mut total_length = 1;
     for i in 0..indices.len() {
@@ -113,8 +125,8 @@ fn flatten_indices(tensor: &Tensor, indices: [usize; 2]) -> usize {
     let mut mul = 1;
     
     for i in 0..tensor.shape.len() {
-        index += indices[i]*mul;
-        mul *= tensor.shape[i];
+        index += indices[tensor.shape.len()-i-1]*mul;
+        mul *= tensor.shape[tensor.shape.len()-i-1];
     }
     index
 }
@@ -126,27 +138,11 @@ fn flatten_indices2(shape: [usize; 2], indices: [usize; 2]) -> usize {
     let mut mul = 1;
     
     for i in 0..shape.len() {
-        index += indices[i]*mul;
-        mul *= shape[i];
+        index += indices[shape.len()-i-1]*mul;
+        mul *= shape[shape.len()-i-1];
     }
     index
 }
-
-/*
-fn flatten_indices(tensor: &Tensor, indices: &[usize]) -> usize {
-    assert!(tensor.shape.len() == indices.len());
-
-    let index = 0;
-    let mul = 1;
-    
-    for i in 0..tensor.shape.len() {
-        index += indices[i]*mul;
-        mul *= tensor.shape[i];
-    }
-
-    index
-}
-*/
 
 fn reshape_index(tensor: &Tensor, mut index: usize) -> Vec<usize> {
     assert!(index < tensor.values.len());
@@ -163,23 +159,6 @@ fn reshape_index(tensor: &Tensor, mut index: usize) -> Vec<usize> {
 
     indices
 }
-
-/*
-impl Index<&[usize]> for Tensor {
-    type Output = f32;
-
-    fn index(&self, indices: &[usize]) -> &f32 {
-        &self.values[flatten_indices(self, indices)]
-    }
-}
-
-impl IndexMut<&[usize]> for Tensor {
-
-    fn index_mut(&mut self, indices: &[usize]) -> &mut f32 {
-        &mut self.values[flatten_indices(self, indices)]
-    }
-}
-*/
 
 impl Index<[usize; 2]> for Tensor {
     type Output = f32;
@@ -238,6 +217,34 @@ impl Mul<&Tensor> for &Tensor {
         t
     }
 }
+
+/*
+impl Mul<&Tensor> for &Tensor {
+    type Output = Tensor;
+
+    fn mul(self, rhs: &Tensor) -> Tensor {
+        assert!(self.shape[1]==rhs.shape[0]);
+        if rhs.shape.len() == 4 {
+            for batch_element in 0..rhs.shape[3] {
+                for channel in 0..rhs.shape[2] {
+                    
+                }
+            }
+        }
+        let mut t = Tensor::zeros(&[self.shape[0], rhs.shape[1]]);
+        for i in 0..self.shape[0] {
+            for j in 0..rhs.shape[1] {
+                let mut val = 0.;
+                for k in 0..self.shape[1] { 
+                    val += self[[i, k]]*rhs[[k, j]];
+                }
+                t[[i, j]] = val;
+            }
+        }
+        t
+    }
+}
+*/
 
 impl Mul<f32> for &Tensor {
     type Output = Tensor;
@@ -333,10 +340,8 @@ impl Sub<&Tensor> for &Tensor {
 impl SubAssign<f32> for &mut Tensor {
     fn sub_assign(&mut self, rhs: f32) {
 
-        for i in 0..self.shape[0] {
-            for j in 0..self.shape[1] {
-                self[[i, j]] -= rhs;
-            }
+        for i in 0..self.values.len() {
+            self.values[i] -= rhs;
         }
     }
 }

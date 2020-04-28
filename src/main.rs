@@ -4,7 +4,9 @@ mod activiations;
 mod ops;
 mod losses;
 mod optimizers;
+mod data;
 
+use std::time::Instant;
 use layers::layer::Layer;
 use layers::linear::Linear;
 use activiations::relu::ReLU;
@@ -13,13 +15,19 @@ use losses::loss::Loss;
 use losses::mse::MSE;
 use optimizers::optimizer::Optimizer;
 use optimizers::sgd::SGD;
+use data::loader;
 
 
 fn main() {
 
+    let t = Tensor::new(vec![0., 1., 2., 3., 4., 5., 6., 7., 8.], &[3, 3]);
+    print!("{}",t)
+    /*
+    let (data, target) = loader::read("C:/Users/alty/Downloads/MNIST/train.csv");
+
     // Init data
-    let input = Tensor::rand(&[4, 1]);
-    let target = Tensor::rand(&[10, 1]);
+    //let input = Tensor::rand(&[4, 1]);
+    //let target = Tensor::rand(&[10, 1]);
 
     // Init network
     let mut l1 = Linear::new([20, 4]);
@@ -29,15 +37,17 @@ fn main() {
 
     let opt = SGD::new(0.1);
 
+    let start = Instant::now();
+
     for _ in 0..100 {
         // Forward pass network
-        let a = l1.fwd(input.clone());
+        let a = l1.fwd(data.clone());
         let b = r.fwd(a);
         let c = l2.fwd(b);
         let loss = mse.fwd(c, &target);
 
         // Print Loss
-        print!("{}\n", loss);
+        //print!("{}\n", loss);
 
         // Backward pass network
         mse.bwd(&target);
@@ -49,5 +59,7 @@ fn main() {
         opt.step(l1.get_parameters());
         opt.step(l2.get_parameters());
     }
+    print!("{}", start.elapsed().as_micros());
+    */
 }
 
