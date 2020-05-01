@@ -12,9 +12,9 @@ impl Linear {
     pub fn new(shape: [usize; 2]) -> Linear{
 
         Linear {
-            input: Tensor::zeros(&[shape[0], 1]),
-            weights: Tensor::rand(&shape)/((shape[1] as f32).sqrt()), // He/Kaiming initialization?
-            biases: Tensor::zeros(&[shape[0], 1])
+            input: Tensor::zeros([1, shape[1], 1, 1]),
+            weights: Tensor::rand([shape[0], shape[1], 1, 1])/((shape[1] as f32).sqrt()), // He/Kaiming initialization?
+            biases: Tensor::zeros([1, shape[1], 1, 1])
         }
     }
 }

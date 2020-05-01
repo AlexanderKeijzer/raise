@@ -3,7 +3,7 @@
 ## Tensor representation
 Tensors representation is variable depending on their us in RAISE. Tensors are always at least 4D, however, in most cases some of these layers will be hidden or not used.
 
-Each dimension representents the following feature of a Tensor:
+Each dimension representents the following feature of a Tensor: SWAPPED
 - Input data 1D: [- ,Sample, Channel, Data]
 - Input data 2D: [Sample, Channel, Y-Data, X-Data]
 - Affine layer weights: [-, Feature, Y-Weights, X-Weights]

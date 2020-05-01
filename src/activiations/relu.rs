@@ -8,7 +8,7 @@ pub struct ReLU {
 impl ReLU {
     pub fn new(size: usize) -> ReLU{
         ReLU {
-            input: Tensor::zeros(&[0, size]),
+            input: Tensor::zeros([1, size, 1, 1]),
         }
     }
 }

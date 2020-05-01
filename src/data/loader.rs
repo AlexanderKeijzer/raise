@@ -10,11 +10,17 @@ pub fn read(file_path: &str) -> (Tensor, Tensor) {
     for result in rdr.records() {
         let record = result.unwrap();
         let mut line: Vec<f32> = record.iter().map(|x| x.parse::<f32>().unwrap()).collect();
-        target.push(line.remove(0));
+        let curr_target = line.remove(0).round() as usize;
+        target.append(&mut vec![0.; curr_target]);
+        target.push(1.);
+        target.append(&mut vec![0.; 9-curr_target]);
         data.append(&mut line);
         n_records += 1;
+        if n_records >= 50 {
+            break;
+        }
     }
-    let data_tensor = Tensor::new(data, &[784, 1, 1, n_records]);
-    let target_tensor = Tensor::new(target, &[1, 1, 1, n_records]);
+    let data_tensor = Tensor::new(data, [1, 784, 1, n_records]);
+    let target_tensor = Tensor::new(target, [1, 10, 1, n_records]);
     (data_tensor, target_tensor)
 }
