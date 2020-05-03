@@ -16,9 +16,6 @@ pub fn read(file_path: &str) -> (Tensor, Tensor) {
         target.append(&mut vec![0.; 9-curr_target]);
         data.append(&mut line);
         n_records += 1;
-        if n_records >= 50 {
-            break;
-        }
     }
     let data_tensor = Tensor::new(data, [1, 784, 1, n_records]);
     let target_tensor = Tensor::new(target, [1, 10, 1, n_records]);

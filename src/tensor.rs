@@ -7,7 +7,7 @@ use std::fmt::Display;
 use rand::prelude::*;
 use rand_distr::StandardNormal;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Tensor {
     pub shape: [usize; 4],
     values: Vec<f32>,
@@ -51,7 +51,7 @@ impl Tensor {
         }
     }
 
-    pub fn pow(&mut self, exponent: f32) -> &Tensor {
+    pub fn pow(&mut self, exponent: f32) -> &mut Tensor {
         for i in 0..self.values.len() {
             self.values[i] = self.values[i].powf(exponent);
         }
@@ -68,14 +68,18 @@ impl Tensor {
     }
 
     //TODO: redo on 1D vec, this seems very inefficent
-    pub fn T(&self) -> Tensor {
+    pub fn transpose(&self) -> Tensor {
         let mut transposed = self.clone();
         let new_shape = [transposed.shape[1], transposed.shape[0], transposed.shape[2], transposed.shape[3]];
         transposed.shape = new_shape;
-        for i in 0..self.shape[0] {
-            for j in 0..self.shape[1] {
-                let target = flatten_indices(&transposed, [j, i, 0, 0]);
-                transposed.values.swap(flatten_indices(&self, [i, j, 0,  0]), target);
+        for b in 0..self.shape[3] {
+            for c in 0..self.shape[2] {
+                for j in 0..self.shape[1] {
+                    for i in 0..self.shape[0] {
+                        let target = flatten_indices(&transposed, [j, i, c, b]);
+                        transposed.values.swap(flatten_indices(&self, [i, j, c, b]), target);
+                    }
+                }
             }
         }
         transposed
@@ -129,6 +133,66 @@ impl Tensor {
         t
     }
 
+    pub fn max(&self, axis: usize) -> Tensor {
+
+        let mut n_shape = self.shape;
+        n_shape[axis] = 1;
+        let mut t = Tensor::new(vec![f32::NEG_INFINITY; length_flat_indices(n_shape)], n_shape);
+
+        let mut sum_index = 1;
+        for i in 0..axis {
+            sum_index *= self.shape[i]
+        }
+        let next_dim_index = sum_index * self.shape[axis];
+
+        let mut curr_pos = 0;
+        for i in 0..self.values.len() {
+
+            if self.values[i] > t.values[curr_pos] {
+                t.values[curr_pos] = self.values[i];
+            }
+
+            let next_ind = (curr_pos+1) % sum_index != 0;
+            let new_axis = (i+1) % next_dim_index == 0;
+            if next_ind || new_axis {
+                curr_pos += 1;
+            } else {
+                curr_pos -= sum_index-1 ;
+            }
+        }
+        t
+    }
+
+    pub fn min(&self, axis: usize) -> Tensor {
+
+        let mut n_shape = self.shape;
+        n_shape[axis] = 1;
+        let mut t = Tensor::new(vec![f32::INFINITY; length_flat_indices(n_shape)], n_shape);
+
+        let mut sum_index = 1;
+        for i in 0..axis {
+            sum_index *= self.shape[i]
+        }
+        let next_dim_index = sum_index * self.shape[axis];
+
+        let mut curr_pos = 0;
+        for i in 0..self.values.len() {
+
+            if self.values[i] < t.values[curr_pos] {
+                t.values[curr_pos] = self.values[i];
+            }
+
+            let next_ind = (curr_pos+1) % sum_index != 0;
+            let new_axis = (i+1) % next_dim_index == 0;
+            if next_ind || new_axis {
+                curr_pos += 1;
+            } else {
+                curr_pos -= sum_index-1 ;
+            }
+        }
+        t
+    }
+
     pub fn norm(&mut self) -> &mut Tensor {
         let mean = self.values.iter().sum::<f32>()/(self.values.len() as f32);
         let std: f32 = (self.values.iter().map(|val| (val - mean).powi(2)).sum::<f32>()/(self.values.len() as f32)).sqrt();
@@ -136,6 +200,36 @@ impl Tensor {
             self.values[i] = (self.values[i] - mean) / std;
         }
         self
+    }
+
+    pub fn exp(mut self) -> Tensor {
+        for i in 0..self.values.len() {
+            self.values[i] = self.values[i].exp();
+        }
+        self
+    }
+
+    pub fn ln(mut self) -> Tensor {
+        for i in 0..self.values.len() {
+            self.values[i] = self.values[i].ln();
+        }
+        self
+    }
+
+    pub fn logsumexp(&self) -> Tensor {
+        let max = self.max(1);
+        (&max-self).exp().sum(1).ln() + max
+    }
+
+    pub fn item_size(&self) -> usize {
+        self.shape[0]*self.shape[1]*self.shape[2]
+    }
+
+    pub fn get_minibatch(&self, position: usize, amount: usize) -> Tensor {
+        let last_item = position*self.item_size() + amount*self.item_size();
+        assert!(last_item <= self.values.len());
+        let shape = [self.shape[0], self.shape[1], self.shape[2], amount];
+        Tensor::new(self.values[position*self.item_size()..last_item].to_vec(), shape)
     }
 }
 
@@ -347,17 +441,90 @@ impl Add<&Tensor> for &Tensor {
     }
 }
 
+impl Add<&Tensor> for Tensor {
+    type Output = Tensor;
+
+    fn add(mut self, rhs: &Tensor) -> Tensor {
+        assert!(self.shape[0] == rhs.shape[0] && self.shape[1] == rhs.shape[1] && self.shape[2] == rhs.shape[2]);
+
+        if self.shape[3] == rhs.shape[3] {
+            for i in 0..self.values.len() {
+                self.values[i] += rhs.values[i];
+            }
+            self
+        } else if self.shape[3] == 1 {
+            let mut t = rhs.clone();
+            for i in 0..t.values.len() {
+                t.values[i] += self.values[i % self.values.len()];
+            }
+            t
+        } else if rhs.shape[3] == 1 {
+            for i in 0..self.values.len() {
+                self.values[i] += rhs.values[i % rhs.values.len()];
+            }
+            self
+        } else {
+            panic!();
+        }
+    }
+}
+
+impl Add<Tensor> for Tensor {
+    type Output = Tensor;
+
+    fn add(mut self, mut rhs: Tensor) -> Tensor {
+        assert!(self.shape[0] == rhs.shape[0] && self.shape[1] == rhs.shape[1] && self.shape[2] == rhs.shape[2]);
+
+        if self.shape[3] == rhs.shape[3] {
+            for i in 0..self.values.len() {
+                self.values[i] += rhs.values[i];
+            }
+            self
+        } else if self.shape[3] == 1 {
+            for i in 0..rhs.values.len() {
+                rhs.values[i] += self.values[i % self.values.len()];
+            }
+            rhs
+        } else if rhs.shape[3] == 1 {
+            for i in 0..self.values.len() {
+                self.values[i] += rhs.values[i % rhs.values.len()];
+            }
+            self
+        } else {
+            panic!();
+        }
+    }
+}
+
+
+
 impl Sub<&Tensor> for &Tensor {
     type Output = Tensor;
 
     fn sub(self, rhs: &Tensor) -> Tensor {
-        assert!(self.shape.iter().zip(rhs.shape.iter()).all(|(a,b)| a == b));
+        assert!(self.shape[0] == rhs.shape[0] && self.shape[1] == rhs.shape[1] && self.shape[2] == rhs.shape[2]);
 
-        let mut t = self.clone();
-        for i in 0..t.values.len() {
-            t.values[i] -= rhs.values[i];
+        if self.shape[3] == rhs.shape[3] {
+            let mut t = self.clone();
+            for i in 0..t.values.len() {
+                t.values[i] -= rhs.values[i];
+            }
+            t
+        } else if self.shape[3] == 1 {
+            let mut t = rhs.clone();
+            for i in 0..t.values.len() {
+                t.values[i] -= self.values[i % self.values.len()];
+            }
+            t
+        } else if rhs.shape[3] == 1 {
+            let mut t = self.clone();
+            for i in 0..t.values.len() {
+                t.values[i] -= rhs.values[i % rhs.values.len()];
+            }
+            t
+        } else {
+            panic!();
         }
-        t
     }
 }
 
@@ -374,6 +541,63 @@ impl Sub<&Tensor> for &mut Tensor {
         t
     }
 }
+
+impl Sub<&Tensor> for Tensor {
+    type Output = Tensor;
+
+    fn sub(mut self, rhs: &Tensor) -> Tensor {
+        assert!(self.shape[0] == rhs.shape[0] && self.shape[1] == rhs.shape[1] && self.shape[2] == rhs.shape[2]);
+
+        if self.shape[3] == rhs.shape[3] {
+            for i in 0..self.values.len() {
+                self.values[i] -= rhs.values[i];
+            }
+            self
+        } else if self.shape[3] == 1 {
+            let mut t = rhs.clone();
+            for i in 0..t.values.len() {
+                t.values[i] -= self.values[i % self.values.len()];
+            }
+            t
+        } else if rhs.shape[3] == 1 {
+            for i in 0..self.values.len() {
+                self.values[i] -= rhs.values[i % rhs.values.len()];
+            }
+            self
+        } else {
+            panic!();
+        }
+    }
+}
+
+impl Sub<Tensor> for &Tensor {
+    type Output = Tensor;
+
+    fn sub(self, mut rhs: Tensor) -> Tensor {
+        assert!(self.shape[0] == rhs.shape[0] && self.shape[1] == rhs.shape[1] && self.shape[2] == rhs.shape[2]);
+
+        if self.shape[3] == rhs.shape[3] {
+            for i in 0..rhs.values.len() {
+                rhs.values[i] -= self.values[i];
+            }
+            rhs
+        } else if self.shape[3] == 1 {
+            for i in 0..rhs.values.len() {
+                rhs.values[i] -= self.values[i % self.values.len()];
+            }
+            rhs
+        } else if rhs.shape[3] == 1 {
+            let mut t = self.clone();
+            for i in 0..t.values.len() {
+                t.values[i] -= rhs.values[i % rhs.values.len()];
+            }
+            t
+        } else {
+            panic!();
+        }
+    }
+}
+
 
 impl SubAssign<f32> for &mut Tensor {
     fn sub_assign(&mut self, rhs: f32) {
@@ -417,4 +641,64 @@ impl Display for Tensor {
         }
         Ok(())
     } 
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn creation() {
+        assert_eq!(Tensor::ones([3, 3, 1, 1]), Tensor::ones([3, 3, 1, 1]))
+    }
+    #[test]
+    fn indexing() {
+        let t = Tensor::new(vec![0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11.], [3, 2, 1, 2]);
+        assert_eq!(t[[0, 0, 0, 0]], 0.);
+        assert_eq!(t[[1, 0, 0, 0]], 1.);
+        assert_eq!(t[[1, 1, 0, 1]], 10.);
+
+        assert_eq!(t[[1, 1, 0]], 4.);
+        assert_eq!(t[[1, 1]], 4.);
+        assert_eq!(t[1], 1.);
+    }
+
+    #[test]
+    fn addition() {
+        let t = Tensor::new(vec![0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11.], [2, 3, 1, 2]);
+
+        let t2t = Tensor::new(vec![0., 2., 4., 6., 8., 10., 12., 14., 16., 18., 20., 22.], [2, 3, 1, 2]);
+        assert_eq!(&t+&t, t2t);
+
+        //Broadcasting
+        let tbc = Tensor::ones([2, 3, 1, 1]);
+        let tbct = Tensor::new(vec![1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12.], [2, 3, 1, 2]);
+        assert_eq!(&t+&tbc, tbct);
+    }
+
+    #[test]
+    fn subtraction() {
+        let t = Tensor::new(vec![0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11.], [2, 3, 1, 2]);
+
+        let t2t = Tensor::zeros([2, 3, 1, 2]);
+        assert_eq!(&t-&t, t2t);
+
+        //Broadcasting
+        let tbc = Tensor::ones([2, 3, 1, 1]);
+        let tbct = Tensor::new(vec![-1., 0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10.], [2, 3, 1, 2]);
+        assert_eq!(&t-&tbc, tbct);
+    }
+
+    #[test]
+    fn multiplication() {
+        let t = Tensor::new(vec![0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11.], [2, 3, 1, 2]);
+
+        let t2t = Tensor::zeros([2, 3, 1, 2]);
+        assert_eq!(&t-&t, t2t);
+
+        //Broadcasting
+        let tbc = Tensor::ones([2, 3, 1, 1]);
+        let tbct = Tensor::new(vec![-1., 0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10.], [2, 3, 1, 2]);
+        assert_eq!(&t-&tbc, tbct);
+    }
 }

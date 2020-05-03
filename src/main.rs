@@ -1,3 +1,4 @@
+#![feature(proc_macro_hygiene)]
 mod tensor;
 mod layers;
 mod activiations;
@@ -5,6 +6,7 @@ mod ops;
 mod losses;
 mod optimizers;
 mod data;
+mod tensor_view;
 
 use tensor::Tensor;
 use std::time::Instant;
@@ -13,78 +15,108 @@ use layers::linear::Linear;
 use activiations::relu::ReLU;
 use losses::loss::Loss;
 use losses::mse::MSE;
+use losses::cross_entropy::CrossEntropy;
 use optimizers::optimizer::Optimizer;
 use optimizers::sgd::SGD;
 use data::loader;
+use data::plot;
+
+extern crate rand;
+
+use rand::Rng;
 
 
 fn main() {
 
-    //let t = Tensor::new(vec![0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11.], [3, 2, 1, 2]);
-    //let ts = t.sum(3);
+    //let t = Tensor::new(vec![0., 1., 2., 3., 4., 5., 6., 7., 8.], [1, 3, 1, 3]);
+    //let ts = t.logsumexp();
     //print!("{}",ts);
     //let t2 = Tensor::new(vec![0., 1., 2., 3., 4., 5., 6., 7., 8.], [3, 3, 1, 1]);
     //let t3 = &t*&t2;
     //print!("{}",&t*2.);
     //print!("{}",t2);
     //print!("{}",t3);
-
     
     let (mut input, target) = loader::read("C:/Users/alty/Downloads/MNIST/train.csv");
-    println!("loaded");
-    print!("{}",input.T());
+    println!("Loaded dataset");
     input.norm();
-    print!("{}",input.T());
-    print!("{}",input.to_vec().iter().sum::<f32>());
-    print!("{}",target.T());
 
     // Init data
-    //let input = Tensor::rand([1, 4, 1, 1]);
-    //let target = Tensor::rand([1, 10, 1, 1]);
+    let hidden_layer = 20;
 
     // Init network
-    let mut l1 = Linear::new([input.shape[1], 20]);
-    let mut r = ReLU::new(20);
-    let mut l2 = Linear::new([20, target.shape[1]]);
-    let mut mse = MSE::new(target.shape[1]);
+    let mut l1 = Linear::new([input.shape[1], hidden_layer]);
+    let mut r = ReLU::new(hidden_layer);
+    let mut l2 = Linear::new([hidden_layer, target.shape[1]]);
+    let mut mse = CrossEntropy::new(target.shape[1]);
 
-    let opt = SGD::new(0.0005);
+    let opt = SGD::new(0.0001);
 
     let start = Instant::now();
 
-    for _ in 0..200 {
-        // Forward pass network
-        let a = l1.fwd(input.clone());
-        let b = r.fwd(a);
-        let c = l2.fwd(b);
-        let loss = mse.fwd(c, &target);
+    let bs = 32;
 
-        // Print Loss
-        print!("{}\n", loss);
+    let mut loss_list = Vec::new();
 
-        // Backward pass network
-        mse.bwd(&target);
-        l2.bwd(mse.get_input());
-        r.bwd(l2.get_input());
-        l1.bwd(r.get_input());
+    for epoch in 0..1 {
+        for mbi in 0..input.shape[3]/bs {
 
-        //Optimizer
-        opt.step(l1.get_parameters());
-        opt.step(l2.get_parameters());
+            let x = input.get_minibatch(mbi, bs);
+            let y = target.get_minibatch(mbi, bs);
+
+            // Forward pass network
+            let a = l1.fwd(x);
+            let b = r.fwd(a);
+            let c = l2.fwd(b);
+            let loss = mse.fwd(c, &y);
+            loss_list.push(loss);
+
+            // Print Loss
+            println!("Epoch: {}, Minibatch: {}, Loss: {}", epoch, mbi, loss);
+
+            // Backward pass network
+            // TODO: cleanup inputs during bwd pass? bwd should return the ownership of its input and set its field to None
+            mse.bwd(&y);
+            l2.bwd(mse.get_input());
+            r.bwd(l2.get_input());
+            l1.bwd(r.get_input());
+
+            // Optimizer
+            opt.step(l1.get_parameters());
+            opt.step(l2.get_parameters());
+            // Zero gradients?
+        }
     }
-    print!("{}", start.elapsed().as_micros());
+    println!("{}", start.elapsed().as_micros());
+    plot::plot(loss_list);
 
-    let test_val = &input.to_vec()[..784];
-    let test = Tensor::new(test_val.clone().to_vec(), [1, 784, 1, 1]);
+    let mut rng  = rand::thread_rng();
+    let pos = rng.gen_range(0, input.shape[3]/5);
+    let x = input.get_minibatch(pos, 5);
+    let y = target.get_minibatch(pos, 5);
 
-    let test_targ_val = &target.to_vec()[..10];
-    let test_targ = Tensor::new(test_targ_val.clone().to_vec(), [1, 10, 1, 1]);
-
-    let a = l1.fwd(test.clone());
+    let a = l1.fwd(x.clone());
     let b = r.fwd(a);
     let c = l2.fwd(b);
 
-    print!("{}",test_targ.T());
-    print!("{}",c.T());
+    for i in 0..5 {
+        let inp = x.get_minibatch(i, 1);
+        let targ = y.get_minibatch(i, 1);
+        let found = c.get_minibatch(i, 1);
+        println!("Target: {}, found: {}", to_index(targ), to_index(found));
+        plot::imshow(&inp, Some([28, 28]));
+    }
+}
+
+fn to_index(tensor: Tensor) -> usize {
+    let mut res = 0;
+    let mut max = f32::NEG_INFINITY;
+    for i in 0..tensor.shape[1] {
+        if tensor[[0, i, 0, 0]] > max {
+            res = i;
+            max = tensor[[0, i, 0, 0]];
+        }
+    }
+    res
 }
 

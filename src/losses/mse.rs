@@ -6,7 +6,7 @@ pub struct MSE {
 }
 
 impl MSE {
-    pub fn new(size: usize) -> MSE{
+    pub fn new(size: usize) -> MSE {
         MSE {
             input: Tensor::zeros([1, size, 1, 1])
         }
