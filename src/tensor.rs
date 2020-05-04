@@ -105,11 +105,12 @@ impl Tensor {
         t
     }
 
-    pub fn sum(&self, axis: usize) -> Tensor {
+    pub fn reduce_axis<F>(&self, axis: usize, init: f32, reduction: F) -> Tensor 
+        where F: Fn(f32, f32) -> f32 {
 
         let mut n_shape = self.shape;
         n_shape[axis] = 1;
-        let mut t = Tensor::zeros(n_shape);
+        let mut t = Tensor::new(vec![init; length_flat_indices(n_shape)], n_shape);
 
         let mut sum_index = 1;
         for i in 0..axis {
@@ -120,7 +121,7 @@ impl Tensor {
         let mut curr_pos = 0;
         for i in 0..self.values.len() {
 
-            t.values[curr_pos] += self.values[i];
+            t.values[curr_pos] = reduction(t.values[curr_pos], self.values[i]);
 
             let next_ind = (curr_pos+1) % sum_index != 0;
             let new_axis = (i+1) % next_dim_index == 0;
@@ -131,66 +132,18 @@ impl Tensor {
             }
         }
         t
+    }
+
+    pub fn sum(&self, axis: usize) -> Tensor {
+        self.reduce_axis(axis, 0., |a, b| a + b)
     }
 
     pub fn max(&self, axis: usize) -> Tensor {
-
-        let mut n_shape = self.shape;
-        n_shape[axis] = 1;
-        let mut t = Tensor::new(vec![f32::NEG_INFINITY; length_flat_indices(n_shape)], n_shape);
-
-        let mut sum_index = 1;
-        for i in 0..axis {
-            sum_index *= self.shape[i]
-        }
-        let next_dim_index = sum_index * self.shape[axis];
-
-        let mut curr_pos = 0;
-        for i in 0..self.values.len() {
-
-            if self.values[i] > t.values[curr_pos] {
-                t.values[curr_pos] = self.values[i];
-            }
-
-            let next_ind = (curr_pos+1) % sum_index != 0;
-            let new_axis = (i+1) % next_dim_index == 0;
-            if next_ind || new_axis {
-                curr_pos += 1;
-            } else {
-                curr_pos -= sum_index-1 ;
-            }
-        }
-        t
+        self.reduce_axis(axis, f32::NEG_INFINITY, |a, b| if a > b {a} else {b})
     }
 
     pub fn min(&self, axis: usize) -> Tensor {
-
-        let mut n_shape = self.shape;
-        n_shape[axis] = 1;
-        let mut t = Tensor::new(vec![f32::INFINITY; length_flat_indices(n_shape)], n_shape);
-
-        let mut sum_index = 1;
-        for i in 0..axis {
-            sum_index *= self.shape[i]
-        }
-        let next_dim_index = sum_index * self.shape[axis];
-
-        let mut curr_pos = 0;
-        for i in 0..self.values.len() {
-
-            if self.values[i] < t.values[curr_pos] {
-                t.values[curr_pos] = self.values[i];
-            }
-
-            let next_ind = (curr_pos+1) % sum_index != 0;
-            let new_axis = (i+1) % next_dim_index == 0;
-            if next_ind || new_axis {
-                curr_pos += 1;
-            } else {
-                curr_pos -= sum_index-1 ;
-            }
-        }
-        t
+        self.reduce_axis(axis, f32::INFINITY, |a, b| if a < b {a} else {b})
     }
 
     pub fn norm(&mut self) -> &mut Tensor {
