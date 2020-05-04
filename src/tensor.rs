@@ -51,7 +51,15 @@ impl Tensor {
         }
     }
 
-    pub fn pow(&mut self, exponent: f32) -> &mut Tensor {
+    pub fn count(shape: [usize; 4]) -> Tensor {
+        Tensor {
+            shape: shape,
+            values: (0..length_flat_indices(shape)).map(|a| a as f32).collect(),
+            gradient: None
+        }
+    }
+
+    pub fn pow(mut self, exponent: f32) -> Tensor {
         for i in 0..self.values.len() {
             self.values[i] = self.values[i].powf(exponent);
         }
@@ -146,7 +154,7 @@ impl Tensor {
         self.reduce_axis(axis, f32::INFINITY, |a, b| if a < b {a} else {b})
     }
 
-    pub fn norm(&mut self) -> &mut Tensor {
+    pub fn norm(mut self) -> Tensor {
         let mean = self.values.iter().sum::<f32>()/(self.values.len() as f32);
         let std: f32 = (self.values.iter().map(|val| (val - mean).powi(2)).sum::<f32>()/(self.values.len() as f32)).sqrt();
         for i in 0..self.values.len() {
@@ -207,6 +215,10 @@ fn flatten_indices(tensor: &Tensor, indices: [usize; 4]) -> usize {
     }
     index
 }
+
+/*
+Indexing
+*/
 
 impl Index<[usize; 4]> for Tensor {
     type Output = f32;
@@ -271,6 +283,10 @@ impl IndexMut<usize> for Tensor {
         &mut self.values[index]
     }
 }
+
+/*
+Multiplication
+*/
 
 impl Mul<&Tensor> for &Tensor {
     type Output = Tensor;
@@ -340,6 +356,21 @@ impl Mul<Tensor> for f32 {
     }
 }
 
+impl Mul<f32> for Tensor {
+    type Output = Tensor;
+
+    fn mul(mut self, rhs: f32) -> Tensor {
+        for i in 0..self.values.len() {
+            self.values[i] = self.values[i]*rhs;
+        }
+        self
+    }
+}
+
+/*
+Division
+*/
+
 impl Div<f32> for Tensor {
     type Output = Tensor;
 
@@ -364,6 +395,163 @@ impl Div<f32> for &Tensor {
         t
     }
 }
+
+/*
+Addition
+*/
+
+enum TensorType<'a> {
+    Owned(Tensor),
+    Reference(&'a Tensor)
+}
+
+impl<'a> TensorType<'a> {
+
+    pub fn is_owned(&self) -> bool {
+        matches!(*self, TensorType::Owned(_))
+    }
+
+    pub fn is_ref(&self) -> bool {
+        !self.is_owned()
+    }
+
+    pub fn get_shape(&self) -> [usize; 4] {
+        match self {
+            TensorType::Owned(t) => t.shape,
+            TensorType::Reference(t) => t.shape,
+        }
+    }
+
+    pub fn get_owned(self) -> Tensor {
+        match self {
+            TensorType::Owned(t) => t,
+            TensorType::Reference(t) => panic!("Requested owned Tensor but TensorType is not owned!"),
+        }
+    }
+
+    pub fn get_reference(&'a self) -> &'a Tensor {
+        match self {
+            TensorType::Owned(t) => t,
+            TensorType::Reference(t) => *t,
+        }
+    }
+}
+
+/*
+Broadcasting addition takes 11x the time of full addition. We can do better than this... Needs rethink.
+*/
+fn broadcast<T>(t1: TensorType, t2: TensorType, operation: T) -> Tensor
+    where T: Fn(f32, f32) -> f32 {
+    let s_t1 = t1.get_shape();
+    let s_t2 = t2.get_shape();
+
+    // Not broadcasting shortcut
+    if s_t1.iter().zip(s_t2.iter()).all(|(a,b)| a == b) {
+        let mut t_owner;
+        let t_reference;
+        if t1.is_owned() {
+            t_owner = t1.get_owned();
+            t_reference = t2.get_reference();
+        } else if t2.is_owned() {
+            t_owner = t2.get_owned();
+            t_reference = t1.get_reference();
+        } else {
+            t_owner = t1.get_reference().clone();
+            t_reference = t2.get_reference();
+        }
+        for i in 0..t_owner.values.len() {
+            t_owner.values[i] = operation(t_owner.values[i], t_reference.values[i]);
+        }
+        return t_owner;
+    }
+
+    let mut broadcaster = 0;
+    let mut broadcast_axis = [false, false, false, false];
+
+    for i in 0..s_t1.len() {
+        if s_t1[i] > s_t2[i] {
+            assert!(s_t2[i] == 1, "Axis {} is not of equal length or 1!", i);
+            if broadcaster == 2 {
+                panic!("Can only broadcast one way: One of the Tensors in this operation needs to be bigger or as big as the other Tensor in every dimension!");
+            }
+            broadcast_axis[i] = true;
+            broadcaster = 1;
+        } else if s_t1[i] < s_t2[i] {
+            assert!(s_t1[i] == 1, "Axis {} is not of equal length or 1!", i);
+            if broadcaster == 1 {
+                panic!("Can only broadcast one way: One of the Tensors in this operation needs to be bigger or as big as the other Tensor in every dimension!");
+            }
+            broadcast_axis[i] = true;
+            broadcaster = 2;
+        }
+    }
+
+    let mut t_owner;
+    let t_broadcaster;
+    if broadcaster == 1 {
+        if t1.is_owned() {
+            t_owner = t1.get_owned();
+        } else {
+            t_owner = t1.get_reference().clone();
+        }
+        t_broadcaster = t2.get_reference();
+    } else if broadcaster == 2 {
+        if t2.is_owned() {
+            t_owner = t2.get_owned();
+        } else {
+            t_owner = t2.get_reference().clone();
+        }
+        t_broadcaster = t1.get_reference();
+    } else {
+        if t1.is_owned() {
+            t_owner = t1.get_owned();
+            t_broadcaster = t2.get_reference();
+        } else if t2.is_owned() {
+            t_owner = t2.get_owned();
+            t_broadcaster = t1.get_reference();
+        } else {
+            t_owner = t1.get_reference().clone();
+            t_broadcaster = t2.get_reference();
+        }
+    }
+
+    // The code below is very inefficient because it's not optimized well by the compiler (which is no surprise)
+    // It might be better (but worse memory-wise) to create a larger vector instead
+    
+    let mut not_bc_size = [1, 1, 1, 1];
+    for i in 1..not_bc_size.len() {
+        if !broadcast_axis[i-1] {
+            not_bc_size[i] = not_bc_size[i-1]*t_owner.shape[i-1];
+        } else {
+            not_bc_size[i] = not_bc_size[i-1];
+        }
+    }
+    let mut step_size = [1, 1, 1, 1];
+    for i in 1..t_owner.shape.len() {
+        step_size[i] = step_size[i-1]*t_owner.shape[i-1];
+    }
+
+    let mut current = 0;
+    for i in 0..t_owner.values.len() {
+        t_owner.values[i] = operation(t_owner.values[i], t_broadcaster.values[current]); //i % t_broadcaster.values.len()
+
+        for j in (0..step_size.len()).rev() {
+            if (i+1) % step_size[j] == 0 {
+                current += 1;
+                if broadcast_axis[j] {
+                    current -= not_bc_size[j];
+                }
+                break;
+            }
+        }
+    }
+    t_owner
+}
+
+pub fn add(t1: &Tensor, t2: &Tensor) -> Tensor {
+    broadcast(TensorType::Reference(t1), TensorType::Reference(t2), |a, b| a + b)
+}
+
 impl Add<&Tensor> for &Tensor {
     type Output = Tensor;
 
@@ -449,7 +637,9 @@ impl Add<Tensor> for Tensor {
     }
 }
 
-
+/*
+Subtraction
+*/
 
 impl Sub<&Tensor> for &Tensor {
     type Output = Tensor;
@@ -478,20 +668,6 @@ impl Sub<&Tensor> for &Tensor {
         } else {
             panic!();
         }
-    }
-}
-
-impl Sub<&Tensor> for &mut Tensor {
-    type Output = Tensor;
-
-    fn sub(self, rhs: &Tensor) -> Tensor {
-        assert!(self.shape.iter().zip(rhs.shape.iter()).all(|(a,b)| a == b));
-
-        let mut t = self.clone();
-        for i in 0..t.values.len() {
-            t.values[i] -= rhs.values[i];
-        }
-        t
     }
 }
 
@@ -551,7 +727,6 @@ impl Sub<Tensor> for &Tensor {
     }
 }
 
-
 impl SubAssign<f32> for &mut Tensor {
     fn sub_assign(&mut self, rhs: f32) {
 
@@ -580,6 +755,8 @@ impl SubAssign<&Tensor> for Tensor {
         }
     }
 }
+
+
 
 impl Display for Tensor {
     
@@ -618,6 +795,8 @@ mod tests {
 
     #[test]
     fn addition() {
+        use std::time::Instant;
+
         let t = Tensor::new(vec![0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11.], [2, 3, 1, 2]);
 
         let t2t = Tensor::new(vec![0., 2., 4., 6., 8., 10., 12., 14., 16., 18., 20., 22.], [2, 3, 1, 2]);
@@ -627,6 +806,43 @@ mod tests {
         let tbc = Tensor::ones([2, 3, 1, 1]);
         let tbct = Tensor::new(vec![1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12.], [2, 3, 1, 2]);
         assert_eq!(&t+&tbc, tbct);
+
+        /*
+        let testje = Tensor::count([3, 2, 1, 2]);
+        let testje1 = Tensor::count([1, 2, 1, 1]);
+        let testje2 = Tensor::count([1, 1, 1, 2]);
+        let testje3 = Tensor::count([1, 2, 1, 2]);
+        let testje4 = Tensor::count([3, 1, 1, 2]);
+
+        println!("{}", &testje);
+        //println!("{}", &testje1);
+        println!("{}", add(&testje, &testje1));
+        println!("{}", add(&testje, &testje2));
+        println!("{}", add(&testje, &testje3));
+        println!("{}", add(&testje, &testje4));
+        */
+
+        let testje = Tensor::rand([2000, 20, 1, 2]);
+        let testje2 = Tensor::rand([2000, 20, 1, 1]);
+        let testje_res = 2.*Tensor::ones([2000, 20, 1, 1000]);
+
+        let start = Instant::now();
+        let s2 = add(&testje,&testje2);
+        println!("Broadcast: {}", start.elapsed().as_micros());
+        println!("Broadcast: {}", s2.values[5]);
+
+        let start = Instant::now();
+        let s1 = &testje+&testje2;
+        println!("Normal: {}", start.elapsed().as_micros());
+        println!("Normal: {}", s1.values[5]);
+
+        //println!("{}", testje);
+        //println!("{}", testje2);
+        //println!("{}", s1);
+        //println!("{}", s2);
+        //assert_eq!(s1, s2);
+
+        //assert_eq!(add(&testje, &testje2), testje_res);
     }
 
     #[test]

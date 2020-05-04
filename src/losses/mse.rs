@@ -19,7 +19,7 @@ impl Loss for MSE {
     } 
 
     fn backward(&mut self, target: &Tensor) {
-        self.get_input().gradient = Some(Box::new(&(2.*&(self.get_input()-target)) / ((target.shape[0]*target.shape[1]) as f32)));
+        self.get_input().gradient = Some(Box::new(&(2.*&(&*self.get_input()-target)) / ((target.shape[0]*target.shape[1]) as f32)));
     }
 
     fn get_input(&mut self) -> &mut Tensor {

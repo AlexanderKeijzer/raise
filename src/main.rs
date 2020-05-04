@@ -39,7 +39,7 @@ fn main() {
     
     let (mut input, target) = loader::read("C:/Users/alty/Downloads/MNIST/train.csv");
     println!("Loaded dataset");
-    input.norm();
+    input = input.norm();
 
     // Init data
     let hidden_layer = 20;

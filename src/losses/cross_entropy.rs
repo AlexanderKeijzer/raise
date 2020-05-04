@@ -23,7 +23,7 @@ impl Loss for CrossEntropy {
     } 
 
     fn backward(&mut self, target: &Tensor) {
-        self.get_input().gradient = Some(Box::new(self.get_input()-target));
+        self.get_input().gradient = Some(Box::new(&*self.get_input()-target));
     }
 
     fn get_input(&mut self) -> &mut Tensor {
