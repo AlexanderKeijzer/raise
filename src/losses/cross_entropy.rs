@@ -19,11 +19,11 @@ impl Loss for CrossEntropy {
         // e.g. if target [0 1 0]T and log_softmax(input) = [0.2 0.4 0.3]T result should be 0.4
         //log_softmax(input);
         //TEMP MSE!!!
-        (input-target).pow(2.).mean()
+        (input-target).pow(2.).mean_all()
     } 
 
     fn backward(&mut self, target: &Tensor) {
-        self.get_input().gradient = Some(Box::new(&*self.get_input()-target));
+        self.input.gradient = Some(Box::new(&self.input-target));
     }
 
     fn get_input(&mut self) -> &mut Tensor {

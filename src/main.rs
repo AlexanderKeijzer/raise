@@ -42,19 +42,19 @@ fn main() {
     input = input.norm();
 
     // Init data
-    let hidden_layer = 20;
+    let hidden_layer = 50;
 
     // Init network
     let mut l1 = Linear::new([input.shape[1], hidden_layer]);
     let mut r = ReLU::new(hidden_layer);
     let mut l2 = Linear::new([hidden_layer, target.shape[1]]);
-    let mut mse = CrossEntropy::new(target.shape[1]);
+    let mut mse = MSE::new(target.shape[1]);
 
-    let opt = SGD::new(0.0001);
+    let opt = SGD::new(0.01);
 
     let start = Instant::now();
 
-    let bs = 32;
+    let bs = 32;//input.shape[3];
 
     let mut loss_list = Vec::new();
 
@@ -65,10 +65,18 @@ fn main() {
             let y = target.get_minibatch(mbi, bs);
 
             // Forward pass network
+            //let start = Instant::now();
             let a = l1.fwd(x);
+            //println!("{}", start.elapsed().as_micros());
+            //let start = Instant::now();
             let b = r.fwd(a);
+            //println!("{}", start.elapsed().as_micros());
+            //let start = Instant::now();
             let c = l2.fwd(b);
+            //println!("{}", start.elapsed().as_micros());
+            //let start = Instant::now();
             let loss = mse.fwd(c, &y);
+            //println!("{}", start.elapsed().as_micros());
             loss_list.push(loss);
 
             // Print Loss
@@ -76,18 +84,31 @@ fn main() {
 
             // Backward pass network
             // TODO: cleanup inputs during bwd pass? bwd should return the ownership of its input and set its field to None
+            //let start = Instant::now();
             mse.bwd(&y);
+            //println!("{}", start.elapsed().as_micros());
+            //let start = Instant::now();
             l2.bwd(mse.get_input());
+            //println!("{}", start.elapsed().as_micros());
+            //let start = Instant::now();
             r.bwd(l2.get_input());
+            //println!("{}", start.elapsed().as_micros());
+            //let start = Instant::now();
             l1.bwd(r.get_input());
+            //println!("{}", start.elapsed().as_micros());
+            //let start = Instant::now();
 
             // Optimizer
             opt.step(l1.get_parameters());
+            //println!("{}", start.elapsed().as_micros());
+            //let start = Instant::now();
             opt.step(l2.get_parameters());
+            //println!("{}", start.elapsed().as_micros());
             // Zero gradients?
         }
     }
     println!("{}", start.elapsed().as_micros());
+    /*
     plot::plot(loss_list);
 
     let mut rng  = rand::thread_rng();
@@ -103,12 +124,17 @@ fn main() {
         let inp = x.get_minibatch(i, 1);
         let targ = y.get_minibatch(i, 1);
         let found = c.get_minibatch(i, 1);
-        println!("Target: {}, found: {}", to_index(targ), to_index(found));
+        println!("Target: {}, found: {}", to_index(&targ), to_index(&found));
+        println!("Result: {}", found.logsumexp());
+        let e = found.clone().exp();
+        println!("Result: {}", (&e/(e.sum(1))).ln());
+        println!("Result: {}", (&found - found.logsumexp()).exp());
         plot::imshow(&inp, Some([28, 28]));
     }
+    */
 }
 
-fn to_index(tensor: Tensor) -> usize {
+fn to_index(tensor: &Tensor) -> usize {
     let mut res = 0;
     let mut max = f32::NEG_INFINITY;
     for i in 0..tensor.shape[1] {

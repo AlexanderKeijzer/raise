@@ -26,11 +26,20 @@ impl Layer for Linear {
     } 
 
     fn backward(&mut self, output: &Tensor) {
+        //use std::time::Instant;
+
         let grad = output.gradient.as_ref().unwrap().as_ref();
+        //println!("Output grad: {:?}", grad.shape);
+        //println!("Input: {:?}", self.input.shape);
+        //println!("{}", mem::size_of_val(grad));
 
         self.input.gradient = Some(Box::new(&self.weights.transpose()*grad));
-        self.weights.gradient = Some(Box::new(grad*&self.get_input().transpose()));
-        self.biases.gradient = Some(Box::new(grad.clone()));
+        //println!("Input grad: {:?}", self.input.gradient.as_ref().unwrap().as_ref().shape);
+        self.weights.gradient = Some(Box::new((grad*&self.get_input().transpose()).mean(3)));
+        //println!("Weight grad: {:?}", self.weights.gradient.as_ref().unwrap().as_ref().shape);
+        self.biases.gradient = Some(Box::new(grad.mean(3)));
+        //println!("Bias grad: {:?}", self.biases.gradient.as_ref().unwrap().as_ref().shape);
+        //panic!();
     }
 
     fn get_parameters(&mut self) -> Vec<&mut Tensor> {

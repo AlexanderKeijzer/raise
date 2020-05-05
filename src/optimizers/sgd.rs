@@ -17,7 +17,7 @@ impl Optimizer for SGD {
 
     fn step(&self, mut parameters: Vec<&mut Tensor>) {
         for tensor in parameters.iter_mut() {
-            *tensor -= &(self.learning_rate*tensor.gradient.as_ref().unwrap().as_ref().sum(3));
+            *tensor -= &(self.learning_rate*tensor.gradient.as_ref().unwrap().as_ref());
         }
     }
 }

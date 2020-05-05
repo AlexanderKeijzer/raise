@@ -66,7 +66,7 @@ impl Tensor {
         self
     }
 
-    pub fn mean(&self) -> f32 {
+    pub fn mean_all(&self) -> f32 {
         (self.values.iter().sum::<f32>())/(self.values.len() as f32)
     }
 
@@ -77,16 +77,29 @@ impl Tensor {
 
     //TODO: redo on 1D vec, this seems very inefficent
     pub fn transpose(&self) -> Tensor {
+
         let mut transposed = self.clone();
         let new_shape = [transposed.shape[1], transposed.shape[0], transposed.shape[2], transposed.shape[3]];
         transposed.shape = new_shape;
-        for b in 0..self.shape[3] {
-            for c in 0..self.shape[2] {
-                for j in 0..self.shape[1] {
-                    for i in 0..self.shape[0] {
-                        let target = flatten_indices(&transposed, [j, i, c, b]);
-                        transposed.values.swap(flatten_indices(&self, [i, j, c, b]), target);
+
+        if transposed.shape[0] != 1 && transposed.shape[1] != 1 {
+            let step_size = get_axis_steps(self.shape);
+
+            for b in 0..self.shape[3] {
+                for c in 0..self.shape[2] {
+                    let start = b*step_size[3] + c*step_size[2];
+                    for i in 0..(step_size[2]) {
+                        //transposed.values[start+i] = self.values[start+((i*step_size[1])%step_size[2])];
+                        transposed.values.swap(start+i, start+((i*step_size[1])%step_size[2]));
                     }
+                    /*
+                    for j in 0..self.shape[1] {
+                        for i in 0..self.shape[0] {
+                            let target = flatten_indices(&transposed, [j, i, c, b]);
+                            transposed.values.swap(flatten_indices(&self, [i, j, c, b]), target);
+                        }
+                    }
+                    */
                 }
             }
         }
@@ -120,24 +133,22 @@ impl Tensor {
         n_shape[axis] = 1;
         let mut t = Tensor::new(vec![init; length_flat_indices(n_shape)], n_shape);
 
-        let mut sum_index = 1;
-        for i in 0..axis {
-            sum_index *= self.shape[i]
-        }
-        let next_dim_index = sum_index * self.shape[axis];
+        let step_size = get_axis_steps(self.shape);
+        let step_size_red = get_axis_steps(t.shape);
 
-        // We can probably do this faster without all these conditions and iterating over every axis instead
-        let mut curr_pos = 0;
-        for i in 0..self.values.len() {
-
-            t.values[curr_pos] = reduction(t.values[curr_pos], self.values[i]);
-
-            let next_ind = (curr_pos+1) % sum_index != 0;
-            let new_axis = (i+1) % next_dim_index == 0;
-            if next_ind || new_axis {
-                curr_pos += 1;
-            } else {
-                curr_pos -= sum_index-1 ;
+        // Similar to broadcasting, could merge
+        for b in 0..self.shape[3] {
+            let bb = if axis == 3 {0} else {b*step_size_red[3]};
+            for c in 0..self.shape[2] {
+                let cb = if axis == 2 {bb} else {bb + c*step_size_red[2]};
+                for j in 0..self.shape[1] {
+                    let jb = if axis == 1 {cb} else {cb + j*step_size_red[1]};
+                    for i in 0..self.shape[0] {
+                        let ib = if axis == 0 {jb} else {jb + i};
+                        let index = b*step_size[3]+c*step_size[2]+j*step_size[1]+i;
+                        t.values[ib] = reduction(t.values[ib], self.values[index]);
+                    }
+                }
             }
         }
         t
@@ -153,6 +164,10 @@ impl Tensor {
 
     pub fn min(&self, axis: usize) -> Tensor {
         self.reduce_axis(axis, f32::INFINITY, |a, b| if a < b {a} else {b})
+    }
+
+    pub fn mean(&self, axis: usize) -> Tensor {
+        self.reduce_axis(axis, 0., |a, b| a + b/(self.shape[axis] as f32))
     }
 
     pub fn norm(mut self) -> Tensor {
@@ -180,7 +195,7 @@ impl Tensor {
 
     pub fn logsumexp(&self) -> Tensor {
         let max = self.max(1);
-        (&max-self).exp().sum(1).ln() + max
+        (self-&max).exp().sum(1).ln() + max
     }
 
     pub fn item_size(&self) -> usize {
@@ -380,6 +395,43 @@ impl Mul<f32> for Tensor {
 Division
 */
 
+impl Div<&Tensor> for &Tensor {
+    type Output = Tensor;
+
+    fn div(self, rhs: &Tensor) -> Tensor {
+        assert!(self.shape.iter().sum::<usize>() >= rhs.shape.iter().sum());
+        broadcast(TensorType::Reference(self), TensorType::Reference(rhs), |a, b| a / b)
+    }
+}
+
+impl Div<&Tensor> for Tensor {
+    type Output = Tensor;
+
+    fn div(self, rhs: &Tensor) -> Tensor {
+        assert!(self.shape.iter().sum::<usize>() >= rhs.shape.iter().sum());
+        broadcast(TensorType::Owned(self), TensorType::Reference(rhs), |a, b| a / b)
+    }
+}
+
+impl Div<Tensor> for &Tensor {
+    type Output = Tensor;
+
+    fn div(self, rhs: Tensor) -> Tensor {
+        assert!(self.shape.iter().sum::<usize>() >= rhs.shape.iter().sum());
+        broadcast(TensorType::Reference(self), TensorType::Owned(rhs), |a, b| a / b)
+    }
+}
+
+impl Div<Tensor> for Tensor {
+    type Output = Tensor;
+
+    fn div(self, rhs: Tensor) -> Tensor {
+        assert!(self.shape.iter().sum::<usize>() >= rhs.shape.iter().sum());
+        broadcast(TensorType::Owned(self), TensorType::Owned(rhs), |a, b| a / b)
+    }
+}
+
+
 impl Div<f32> for Tensor {
     type Output = Tensor;
 
@@ -456,24 +508,24 @@ fn broadcast<T>(t1: TensorType, t2: TensorType, operation: T) -> Tensor
 
     // Shortcutting equal size tensors is not siginificantly faster
 
-    let mut broadcaster = 0;
+    let mut broadcasted = 0;
     let mut broadcast_axis = [false, false, false, false];
 
     for i in 0..s_t1.len() {
         if s_t1[i] > s_t2[i] {
             assert!(s_t2[i] == 1, "Axis {} is not of equal length or 1!", i);
-            if broadcaster == 2 {
+            if broadcasted == 2 {
                 panic!("Can only broadcast one way: One of the Tensors in this operation needs to be bigger or as big as the other Tensor in every dimension!");
             }
             broadcast_axis[i] = true;
-            broadcaster = 1;
+            broadcasted = 1;
         } else if s_t1[i] < s_t2[i] {
             assert!(s_t1[i] == 1, "Axis {} is not of equal length or 1!", i);
-            if broadcaster == 1 {
+            if broadcasted == 1 {
                 panic!("Can only broadcast one way: One of the Tensors in this operation needs to be bigger or as big as the other Tensor in every dimension!");
             }
             broadcast_axis[i] = true;
-            broadcaster = 2;
+            broadcasted = 2;
         }
     }
 
@@ -481,14 +533,14 @@ fn broadcast<T>(t1: TensorType, t2: TensorType, operation: T) -> Tensor
 
     let mut t_owner;
     let t_broadcaster;
-    if broadcaster == 1 {
+    if broadcasted == 1 {
         if t1.is_owned() {
             t_owner = t1.get_owned();
         } else {
             t_owner = t1.get_reference().clone();
         }
         t_broadcaster = t2.get_reference();
-    } else if broadcaster == 2 {
+    } else if broadcasted == 2 {
         if t2.is_owned() {
             t_owner = t2.get_owned();
         } else {
@@ -732,14 +784,22 @@ mod tests {
 
     #[test]
     fn multiplication() {
-        let t = Tensor::new(vec![0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11.], [2, 3, 1, 2]);
+        use std::time::Instant;
 
-        let t2t = Tensor::zeros([2, 3, 1, 2]);
-        assert_eq!(&t-&t, t2t);
+        let A = Tensor::count([300, 300, 1, 1]);
+        let x = Tensor::count([1, 300, 1, 1000]);
 
-        //Broadcasting
-        let tbc = Tensor::ones([2, 3, 1, 1]);
-        let tbct = Tensor::new(vec![-1., 0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10.], [2, 3, 1, 2]);
-        assert_eq!(&t-&tbc, tbct);
+        //println!("{}", A);
+        //println!("{}", x);
+        let start = Instant::now();
+        let s = &A*&x;
+        println!("Mul: {}", start.elapsed().as_micros());
+        println!("Mul res: {}", s.values[5]);
+    }
+
+    #[test]
+    fn comparison() {
+        let A = Tensor::count([3, 2, 1, 2]);
+        println!("{}", A.sum(0));
     }
 }
