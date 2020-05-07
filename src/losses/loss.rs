@@ -10,13 +10,14 @@ pub trait Loss {
         tmp
     }
 
-    fn backward(&mut self, target: &Tensor);
+    fn backward(&mut self, input: Tensor, target: Tensor) -> Tensor;
 
-    fn bwd(&mut self, target: &Tensor) {
-        self.backward(target);
+    fn bwd(&mut self, target: Tensor) -> Tensor {
+        let input = self.take_input();
+        self.backward(input, target)
     }
 
-    fn get_input(&mut self) -> &mut Tensor;
+    fn take_input(&mut self) -> Tensor;
 
     fn set_input(&mut self, tensor: Tensor);
 }

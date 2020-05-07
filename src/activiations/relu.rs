@@ -2,32 +2,32 @@ use crate::tensor::Tensor;
 use crate::layers::layer::Layer;
 use crate::ops::ops;
 pub struct ReLU {
-    input: Tensor,
+    input: Option<Tensor>,
 }
 
 impl ReLU {
-    pub fn new(size: usize) -> ReLU{
+    pub fn new(size: usize) -> ReLU {
         ReLU {
-            input: Tensor::zeros([1, size, 1, 1]),
+            input: None,
         }
     }
 }
 
 impl Layer for ReLU {
 
-    fn forward(&self, tensor: &Tensor) -> Tensor{
+    fn forward(&self, tensor: &Tensor) -> Tensor {
         ops::max(0., tensor)
     } 
 
-    fn backward(&mut self, output: &Tensor) {
-        self.input.gradient = Some(Box::new(output.is_bigger(0.)))
+    fn backward(&mut self, input: Tensor, output_grad: Tensor) -> Tensor {
+        &input.is_bigger_(0.)*&output_grad
     }
 
-    fn get_input(&mut self) -> &mut Tensor {
-        &mut self.input
+    fn take_input(&mut self) -> Tensor {
+        self.input.take().unwrap()
     }
 
     fn set_input(&mut self, tensor: Tensor) {
-        self.input = tensor;
+        self.input = Some(tensor);
     }
 }

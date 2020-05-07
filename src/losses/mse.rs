@@ -2,13 +2,13 @@ use super::loss::Loss;
 use crate::tensor::Tensor;
 
 pub struct MSE {
-    input: Tensor,
+    input: Option<Tensor>,
 }
 
 impl MSE {
     pub fn new(size: usize) -> MSE {
         MSE {
-            input: Tensor::zeros([1, size, 1, 1])
+            input: None
         }
     }
 }
@@ -18,15 +18,16 @@ impl Loss for MSE {
         (input-target).pow(2.).mean_all()
     } 
 
-    fn backward(&mut self, target: &Tensor) {
-        self.get_input().gradient = Some(Box::new(&(2.*(&*self.get_input()-target)) / (target.shape[1] as f32)));
+    fn backward(&mut self, input: Tensor, target: Tensor) -> Tensor {
+        let s = target.shape[1] as f32;
+        2.*(input-target) / s
     }
 
-    fn get_input(&mut self) -> &mut Tensor {
-        &mut self.input
+    fn take_input(&mut self) -> Tensor {
+        self.input.take().unwrap()
     }
 
     fn set_input(&mut self, tensor: Tensor) {
-        self.input = tensor;
+        self.input = Some(tensor);
     }
 }

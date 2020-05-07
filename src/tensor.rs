@@ -77,45 +77,58 @@ impl Tensor {
     }
 
     //TODO: redo on 1D vec, this seems very inefficent
-    pub fn transpose(&self) -> Tensor {
+    pub fn transpose_(mut self) -> Tensor {
+        let new_shape = [self.shape[1], self.shape[0], self.shape[2], self.shape[3]];
 
-        let mut transposed = self.clone();
-        let new_shape = [transposed.shape[1], transposed.shape[0], transposed.shape[2], transposed.shape[3]];
-        transposed.shape = new_shape;
-
-        if transposed.shape[0] != 1 && transposed.shape[1] != 1 {
+        if self.shape[0] != 1 && self.shape[1] != 1 {
             let step_size = get_axis_steps(self.shape);
 
             for b in 0..self.shape[3] {
                 for c in 0..self.shape[2] {
                     let start = b*step_size[3] + c*step_size[2];
                     for i in 0..(step_size[2]) {
-                        transposed.values.swap(start+i, start+((i*step_size[1])%step_size[2]));
+                        self.values.swap(start+i, start+((i*step_size[1])%step_size[2]));
                     }
                 }
             }
         }
-        transposed
+        self.shape = new_shape;
+        self
+    }
+
+    pub fn transpose(&self) -> Tensor {
+        let transposed = self.clone();
+        transposed.transpose_()
+    }
+
+    pub fn is_bigger_(mut self, scalar: f32) -> Tensor {
+        for i in 0..self.values.len() {
+            if self.values[i] > scalar {
+                self.values[i] = 1.;
+            } else {
+                self.values[i] = 0.;
+            }
+        }
+        self
     }
 
     pub fn is_bigger(&self, scalar: f32) -> Tensor {
-        let mut t = Tensor::zeros(self.shape);
-        for i in 0..t.values.len() {
-            if t.values[i] > scalar {
-                t.values[i] = 1.;
+        let t = Tensor::zeros(self.shape);
+        t.is_bigger_(scalar)
+    }
+
+    pub fn is_smaller_(mut self, scalar: f32) -> Tensor {
+        for i in 0..self.values.len() {
+            if self.values[i] < scalar {
+                self.values[i] = 1.;
             }
         }
-        t
+        self
     }
 
     pub fn is_smaller(&self, scalar: f32) -> Tensor {
-        let mut t = Tensor::zeros(self.shape);
-        for i in 0..t.values.len() {
-            if t.values[i] < scalar {
-                t.values[i] = 1.;
-            }
-        }
-        t
+        let t = Tensor::zeros(self.shape);
+        t.is_smaller_(scalar)
     }
 
     pub fn reduce_axis<F>(&self, axis: usize, init: f32, reduction: F) -> Tensor 
@@ -330,15 +343,17 @@ impl Mul<&Tensor> for &Tensor {
     type Output = Tensor;
 
     fn mul(self, rhs: &Tensor) -> Tensor {
-        assert!(self.shape[0]==rhs.shape[1]);
         assert!(self.shape[2]==rhs.shape[2]); // Allow broadcasting?
         assert!(self.shape[3]==rhs.shape[3] || self.shape[3] == 1 || rhs.shape[3] == 1);
 
-        if rhs.shape[0] == 1 {
+        if self.shape[0] == rhs.shape[0] && self.shape[1] == rhs.shape[1] && (self.shape[0] == 0 || self.shape[1] == 0) {
+            element_wise_mul(self, rhs)
+        } else if rhs.shape[0] == 1 {
             matrix_vector_mul(self, rhs)
         } else if self.shape[0] == 1 && rhs.shape[1] == 1 {
             vector_vector_mul(self, rhs)
         } else {
+            assert!(self.shape[0]==rhs.shape[1], "Invalid multiplication!");
             mat_mul(self, rhs)
         }
     }
@@ -388,8 +403,18 @@ fn vector_vector_mul(v1: &Tensor, v2: &Tensor) -> Tensor {
         for j in 0..v1.shape[1] {
             for i in 0..v2.shape[0] {
                 // mat[i,j] = vec[i] * vec[j]
-                out[i+j*v2.shape[0]] += vec1[j]*vec2[i];
+                out[i+j*v2.shape[0]] = vec1[j]*vec2[i];
             }
+        }
+    });
+    result
+}
+
+fn element_wise_mul(v1: &Tensor, v2: &Tensor) -> Tensor {
+    let mut result = v1.clone();
+    for_each_sample(v1, v2, &mut result, |_, vec2, out| {
+        for i in 0..vec2.len() {
+            out[i] *= vec2[i];
         }
     });
     result
@@ -723,6 +748,16 @@ impl SubAssign<f32> for &mut Tensor {
 
 impl SubAssign<&Tensor> for &mut Tensor {
     fn sub_assign(&mut self, rhs: &Tensor) {
+        assert!(self.shape.iter().zip(rhs.shape.iter()).all(|(a,b)| a == b));
+
+        for i in 0..self.values.len() {
+            self.values[i] -= rhs.values[i];
+        }
+    }
+}
+
+impl SubAssign<Tensor> for &mut Tensor {
+    fn sub_assign(&mut self, rhs: Tensor) {
         assert!(self.shape.iter().zip(rhs.shape.iter()).all(|(a,b)| a == b));
 
         for i in 0..self.values.len() {

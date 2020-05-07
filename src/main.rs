@@ -50,7 +50,7 @@ fn main() {
     let mut l2 = Linear::new([hidden_layer, target.shape[1]]);
     let mut mse = MSE::new(target.shape[1]);
 
-    let opt = SGD::new(0.03);
+    let opt = SGD::new(0.01);
 
     let start = Instant::now();
 
@@ -58,7 +58,7 @@ fn main() {
 
     let mut loss_list = Vec::new();
 
-    for epoch in 0..5 {
+    for epoch in 0..4 {
         for mbi in 0..input.shape[3]/bs {
 
             let x = input.get_minibatch(mbi, bs);
@@ -77,20 +77,25 @@ fn main() {
 
             // Backward pass network
             // TODO: cleanup inputs during bwd pass? bwd should return the ownership of its input and set its field to None
-            mse.bwd(&y); // <0.1%
-            l2.bwd(mse.get_input()); // 1.2%
-            r.bwd(l2.get_input()); // <0.1%
-            l1.bwd(r.get_input()); // 82.3%
+            let loss_grad = mse.bwd(y); // <0.1%
+            //println!("{}", loss_grad);
+            let l2_grad = l2.bwd(loss_grad); // 1.2%
+            //println!("{}", l2_grad);
+            let r_grad = r.bwd(l2_grad); // <0.1%
+            //println!("{}", r_grad);
+            let l1_grad = l1.bwd(r_grad); // 82.3%
+            //println!("{}", l1_grad);
 
             // Optimizer
             opt.step(l1.get_parameters()); // 1.7%
             opt.step(l2.get_parameters()); // 0.2%
+            //panic!();
             // Zero gradients?
         }
     }
     println!("Training time: {}", start.elapsed().as_micros());
     
-    //plot::plot(loss_list);
+    plot::plot(loss_list);
 
     let mut rng  = rand::thread_rng();
     let pos = rng.gen_range(0, input.shape[3]/5);

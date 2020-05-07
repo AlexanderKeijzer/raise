@@ -2,25 +2,26 @@ use crate::tensor::Tensor;
 
 pub trait Layer {
 
-    fn forward(&self, tensor: &Tensor) -> Tensor;
+    fn forward(&self, input: &Tensor) -> Tensor;
 
-    fn fwd(&mut self, tensor: Tensor) -> Tensor{
-        let tmp = self.forward(&tensor);
-        self.set_input(tensor);
+    fn fwd(&mut self, input: Tensor) -> Tensor{
+        let tmp = self.forward(&input);
+        self.set_input(input);
         tmp
     }
 
-    fn backward(&mut self, output: &Tensor);
+    fn backward(&mut self, input: Tensor, output_grad: Tensor) -> Tensor;
 
-    fn bwd(&mut self, output: &Tensor) {
-        self.backward(output);
+    fn bwd(&mut self, output_grad: Tensor) -> Tensor {
+        let input = self.take_input();
+        self.backward(input, output_grad)
     }
 
     fn get_parameters(&mut self) -> Vec<&mut Tensor> {
         Vec::new()
     }
 
-    fn get_input(&mut self) -> &mut Tensor;
+    fn take_input(&mut self) -> Tensor;
 
     fn set_input(&mut self, tensor: Tensor);
 }

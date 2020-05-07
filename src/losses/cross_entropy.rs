@@ -2,13 +2,13 @@ use super::loss::Loss;
 use crate::tensor::Tensor;
 
 pub struct CrossEntropy {
-    input: Tensor,
+    input: Option<Tensor>,
 }
 
 impl CrossEntropy {
     pub fn new(size: usize) -> CrossEntropy {
         CrossEntropy {
-            input: Tensor::zeros([1, size, 1, 1])
+            input: None
         }
     }
 }
@@ -22,16 +22,16 @@ impl Loss for CrossEntropy {
         (input-target).pow(2.).mean_all()
     } 
 
-    fn backward(&mut self, target: &Tensor) {
-        self.input.gradient = Some(Box::new(&self.input-target));
+    fn backward(&mut self, input: Tensor, target: Tensor) -> Tensor {
+        input-target
     }
 
-    fn get_input(&mut self) -> &mut Tensor {
-        &mut self.input
+    fn take_input(&mut self) -> Tensor {
+        self.input.take().unwrap()
     }
 
     fn set_input(&mut self, tensor: Tensor) {
-        self.input = tensor;
+        self.input = Some(tensor);
     }
 }
 
