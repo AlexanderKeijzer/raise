@@ -90,17 +90,8 @@ impl Tensor {
                 for c in 0..self.shape[2] {
                     let start = b*step_size[3] + c*step_size[2];
                     for i in 0..(step_size[2]) {
-                        //transposed.values[start+i] = self.values[start+((i*step_size[1])%step_size[2])];
                         transposed.values.swap(start+i, start+((i*step_size[1])%step_size[2]));
                     }
-                    /*
-                    for j in 0..self.shape[1] {
-                        for i in 0..self.shape[0] {
-                            let target = flatten_indices(&transposed, [j, i, c, b]);
-                            transposed.values.swap(flatten_indices(&self, [i, j, c, b]), target);
-                        }
-                    }
-                    */
                 }
             }
         }
@@ -339,9 +330,8 @@ impl Mul<&Tensor> for &Tensor {
     type Output = Tensor;
 
     fn mul(self, rhs: &Tensor) -> Tensor {
-        //TODO: Allow broadcasting
         assert!(self.shape[0]==rhs.shape[1]);
-        assert!(self.shape[2]==rhs.shape[2]);
+        assert!(self.shape[2]==rhs.shape[2]); // Allow broadcasting?
         assert!(self.shape[3]==rhs.shape[3] || self.shape[3] == 1 || rhs.shape[3] == 1);
 
         if rhs.shape[0] == 1 {
@@ -351,109 +341,58 @@ impl Mul<&Tensor> for &Tensor {
         } else {
             mat_mul(self, rhs)
         }
-        
-        /*
-        let mut t = Tensor::zeros([rhs.shape[0], self.shape[1], self.shape[2], rhs.shape[3]]);
-        for b in 0..rhs.shape[3] {
-            let mut bb = b;
-            if self.shape[3] == 1 {
-                bb = 0;
-            }
-            for c in 0..self.shape[2] {
-                // MATMUL
-                for i in 0..rhs.shape[0] {
-                    for j in 0..self.shape[1] {
-                        let mut val = 0.;
-                        for k in 0..self.shape[0] { 
-                            val += self[[k, j, c, bb]]*rhs[[i, k, c, b]];
-                        }
-                        t[[i, j, c, b]] = val;
-                    }
-                }
-            }
-        }
-        t
-        */
     }
-}
-
-fn matrix_vector_mul(matrix: &Tensor, vector: &Tensor) -> Tensor {
-    let mut t = Tensor::zeros([vector.shape[0], matrix.shape[1], matrix.shape[2], cmp::max(matrix.shape[3], vector.shape[3])]);
-
-    for_each_sample(matrix, vector, &mut t, |mat, vec, out| {
-        for j in 0..matrix.shape[1] {
-            let row = &mat[j*matrix.shape[0]..((j+1)*matrix.shape[0])];
-            let mut res: f32 = 0.0;
-            for i in 0..matrix.shape[0] {
-                res += row[i]*vec[i];
-            }
-            out[j] = res;
-        }
-    });
-
-    /*
-    let axis_steps_self =  get_axis_steps(matrix.shape);
-    let axis_steps_rhs =  get_axis_steps(vector.shape);
-    let axis_steps_res =  get_axis_steps(t.shape);
-    for b in 0..vector.shape[3] {
-        let mut bb = b;
-        if matrix.shape[3] == 1 {
-            bb = 0;
-        }
-        for c in 0..matrix.shape[2] {
-            let ss = bb*axis_steps_self[3]+c*axis_steps_self[2];
-            let sr = b*axis_steps_rhs[3]+c*axis_steps_rhs[2];
-            let st = b*axis_steps_res[3]+c*axis_steps_res[2];
-
-            let out = &mut t.values[st..st+matrix.shape[1]];
-            let item_self = &matrix.values[ss..ss+matrix.shape[1]*matrix.shape[0]];
-            let item_rhs = &vector.values[sr..sr+matrix.shape[0]];
-
-            for j in 0..matrix.shape[1] {
-                let row = &item_self[j*matrix.shape[0]..((j+1)*matrix.shape[0])];
-                //let vec = &vector.values[sr..sr+matrix.shape[0]];
-                let mut res: f32 = 0.0;
-                for i in 0..matrix.shape[0] {
-                    res += row[i]*item_rhs[i];
-                }
-                out[j] = res;
-            }
-        }
-    }
-    */
-    return t;
 }
 
 fn mat_mul(m1: &Tensor, m2: &Tensor) -> Tensor {
-    let mut t = Tensor::zeros([m2.shape[0], m1.shape[1], m1.shape[2], cmp::max(m1.shape[3], m2.shape[3])]);
+    let mut result = Tensor::zeros([m2.shape[0], m1.shape[1], m1.shape[2], cmp::max(m1.shape[3], m2.shape[3])]);
 
-    for_each_sample(m1, m2, &mut t, |mat1, mat2, out| {
+    for_each_sample(m1, m2, &mut result, |mat1, mat2, out| {
         for i in 0..m2.shape[0] {
             for j in 0..m1.shape[1] {
-                //let row = &mat1[j*m1.shape[0]..((j+1)*m1.shape[0])];
                 let mut res: f32 = 0.0;
                 for k in 0..m1.shape[0] {
-                    //res = kj + ik
+                    // res = mat[k,j] * mat[i,k]
                     res += mat1[k+j*m1.shape[0]]*mat2[i+k*m2.shape[0]];
                 }
-                //ij
+                // mat[i,j]
                 out[i+j*m2.shape[0]] = res;
             }
         }
     });
-    t
+    result
+}
+
+fn matrix_vector_mul(matrix: &Tensor, vector: &Tensor) -> Tensor {
+    let mut result = Tensor::zeros([vector.shape[0], matrix.shape[1], matrix.shape[2], cmp::max(matrix.shape[3], vector.shape[3])]);
+
+    for_each_sample(matrix, vector, &mut result, |mat, vec, out| {
+        for j in 0..matrix.shape[1] {
+            let row = &mat[j*matrix.shape[0]..((j+1)*matrix.shape[0])];
+
+            let mut res: f32 = 0.0;
+            for i in 0..matrix.shape[0] {
+                // res = mat[i,j] * vec[i]
+                res += row[i]*vec[i];
+            }
+            // vec[j] = res
+            out[j] = res;
+        }
+    });
+    result
 }
 
 fn vector_vector_mul(v1: &Tensor, v2: &Tensor) -> Tensor {
-    let mut t = Tensor::zeros([v2.shape[0], v1.shape[1], v1.shape[2], cmp::max(v1.shape[3], v2.shape[3])]);
-    for_each_sample(v1, v2, &mut t, |vec1, vec2, out| {
+    let mut result = Tensor::zeros([v2.shape[0], v1.shape[1], v1.shape[2], cmp::max(v1.shape[3], v2.shape[3])]);
+    for_each_sample(v1, v2, &mut result, |vec1, vec2, out| {
         for j in 0..v1.shape[1] {
             for i in 0..v2.shape[0] {
+                // mat[i,j] = vec[i] * vec[j]
                 out[i+j*v2.shape[0]] += vec1[j]*vec2[i];
             }
         }
     });
-    t
+    result
 }
 
 impl Mul<f32> for &Tensor {
@@ -829,7 +768,7 @@ mod tests {
     }
     #[test]
     fn indexing() {
-        let t = Tensor::new(vec![0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11.], [3, 2, 1, 2]);
+        let t = Tensor::count([3, 2, 1, 2]);
         assert_eq!(t[[0, 0, 0, 0]], 0.);
         assert_eq!(t[[1, 0, 0, 0]], 1.);
         assert_eq!(t[[1, 1, 0, 1]], 10.);
@@ -841,7 +780,6 @@ mod tests {
 
     #[test]
     fn addition() {
-        use std::time::Instant;
 
         let t = Tensor::new(vec![0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11.], [2, 3, 1, 2]);
 
@@ -852,44 +790,6 @@ mod tests {
         let tbc = Tensor::ones([2, 3, 1, 1]);
         let tbct = Tensor::new(vec![1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12.], [2, 3, 1, 2]);
         assert_eq!(t+tbc, tbct);
-
-        /*
-        let testje = Tensor::count([3, 2, 1, 2]);
-        let testje1 = Tensor::count([1, 2, 1, 1]);
-        let testje2 = Tensor::count([1, 1, 1, 2]);
-        let testje3 = Tensor::count([1, 2, 1, 2]);
-        let testje4 = Tensor::count([3, 1, 1, 2]);
-
-        println!("{}", &testje);
-        println!("{}", &testje1);
-        println!("{}", add(&testje, &testje1));
-        println!("{}", add(&testje, &testje2));
-        println!("{}", add(&testje, &testje3));
-        println!("{}", add(&testje, &testje4));
-        */
-        
-
-        let testje = Tensor::rand([2000, 20, 1, 1000]);
-        let testje2 = Tensor::rand([2000, 20, 1, 1]);
-        let testje_res = 2.*Tensor::ones([2000, 20, 1, 1000]);
-
-        let start = Instant::now();
-        let s1 = &testje+testje2;
-        println!("BC Addition: {}", start.elapsed().as_micros());
-        println!("BC Addition: {}", s1.values[50000]);
-
-        let start = Instant::now();
-        let s1 = &testje+&testje;
-        println!("Normal Addition: {}", start.elapsed().as_micros());
-        println!("Normal Addition: {}", s1.values[5]);
-
-        //println!("{}", testje);
-        //println!("{}", testje2);
-        //println!("{}", s1);
-        //println!("{}", s2);
-        //assert_eq!(s1, s2);
-
-        //assert_eq!(add(&testje, &testje2), testje_res);
     }
 
     #[test]
@@ -907,48 +807,11 @@ mod tests {
 
     #[test]
     fn multiplication() {
-        use std::time::Instant;
-
-        let A = Tensor::count([300, 300, 1, 100]);
-        let x = Tensor::count([1, 300, 1, 100]);
-        //let xt = Tensor::count([80, 1, 1, 100]);
-        let xt = x.transpose();
-
-        //println!("{}", A);
-        //println!("{}", x);
-        let start = Instant::now();
-        let s = &A*&x;
-        println!("Mul: {}", start.elapsed().as_micros());
-        //println!("{}", s);
-
-        
-        let start = Instant::now();
-        let s2 = (&x*&xt);
-        println!("Tmul: {}", start.elapsed().as_micros());
-        //println!("{}", s2);
-
-        /*
-        let start = Instant::now();
-        let s3 = &(x.sum(3))*&(xt.sum(3));
-        //println!("Mul: {}", start.elapsed().as_micros());
-        */
-        //println!("{}", s2);
-        //println!("{}", s3);
-        
-        
-        
-        let start = Instant::now();
-        let s1 = &A*&A;
-        println!("Mul: {}", start.elapsed().as_micros());
-        //println!("{}", s1);
-        
-        
-
+        //TODO
     }
 
     #[test]
     fn comparison() {
-        let A = Tensor::count([3, 2, 1, 2]);
-        println!("{}", A.sum(0));
+        //TODO
     }
 }
