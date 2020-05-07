@@ -113,7 +113,7 @@ impl Tensor {
     }
 
     pub fn is_bigger(&self, scalar: f32) -> Tensor {
-        let t = Tensor::zeros(self.shape);
+        let t = self.clone();
         t.is_bigger_(scalar)
     }
 
@@ -121,14 +121,27 @@ impl Tensor {
         for i in 0..self.values.len() {
             if self.values[i] < scalar {
                 self.values[i] = 1.;
+            } else {
+                self.values[i] = 0.;
             }
         }
         self
     }
 
     pub fn is_smaller(&self, scalar: f32) -> Tensor {
-        let t = Tensor::zeros(self.shape);
+        let t = self.clone();
         t.is_smaller_(scalar)
+    }
+
+    pub fn equals_(self, tensor: &Tensor) -> Tensor {
+        broadcast(TensorType::Owned(self), TensorType::Reference(tensor), |a, b| {
+            (a == b) as i32 as f32
+        })
+    }
+
+    pub fn equals(&self, tensor: &Tensor) -> Tensor {
+        let t= self.clone();
+        t.equals_(tensor)
     }
 
     pub fn reduce_axis<F>(&self, axis: usize, init: f32, reduction: F) -> Tensor 
@@ -202,6 +215,62 @@ impl Tensor {
         let max = self.max(1);
         (self-&max).exp().sum(1).ln() + max
     }
+
+    pub fn argmax(&self, axis: usize) -> Tensor {
+        // COPY FROM REDUCE AXIS, TRY TO MERGE
+        let mut n_shape = self.shape;
+        n_shape[axis] = 1;
+        let mut result = Tensor::new(vec![-1.; length_flat_indices(n_shape)], n_shape);
+        let mut max_val = Tensor::new(vec![f32::NEG_INFINITY; length_flat_indices(n_shape)], n_shape);
+
+        let step_size = get_axis_steps(self.shape);
+        let step_size_red = get_axis_steps(result.shape);
+
+        // Similar to broadcasting, could merge
+        for b in 0..self.shape[3] {
+            let bb = if axis == 3 {0} else {b*step_size_red[3]};
+            for c in 0..self.shape[2] {
+                let cb = if axis == 2 {bb} else {bb + c*step_size_red[2]};
+                for j in 0..self.shape[1] {
+                    let jb = if axis == 1 {cb} else {cb + j*step_size_red[1]};
+                    for i in 0..self.shape[0] {
+                        let ib = if axis == 0 {jb} else {jb + i};
+                        let index = b*step_size[3]+c*step_size[2]+j*step_size[1]+i;
+                        if self.values[index] > max_val.values[ib] {
+                            max_val.values[ib] = self.values[index];
+                            result.values[ib] = match axis {
+                                0 => i as f32,
+                                1 => j as f32,
+                                2 => c as f32,
+                                3 => b as f32,
+                                _ => panic!()
+                            };
+                        }
+                    }
+                }
+            }
+        }
+        result
+    }
+
+    /*
+    pub fn select(&self, selection: &[usize], axis: usize) -> Tensor {
+        let mut n_shape = self.shape;
+        n_shape[axis] = 1;
+        let mut select = [false, false, false, false];
+        select[axis] = true;
+        let mut result = Tensor::zeros(n_shape);
+        for b in 0..result.values.len() {
+            for c in 0..result.values.len() {
+                for j in 0..result.values.len() {
+                    for i in 0..result.values.len() {
+                        result[i] = self.values[i]
+                    }
+                }
+            }
+        }
+    }
+    */
 
     pub fn item_size(&self) -> usize {
         self.shape[0]*self.shape[1]*self.shape[2]

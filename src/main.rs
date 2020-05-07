@@ -48,15 +48,16 @@ fn main() {
     let mut l1 = Linear::new([input.shape[1], hidden_layer]);
     let mut r = ReLU::new(hidden_layer);
     let mut l2 = Linear::new([hidden_layer, target.shape[1]]);
-    let mut mse = MSE::new(target.shape[1]);
+    let mut ce = CrossEntropy::new(target.shape[1]);
 
-    let opt = SGD::new(0.01);
+    let opt = SGD::new(0.001);
 
     let start = Instant::now();
 
     let bs = 32;
 
     let mut loss_list = Vec::new();
+    let mut accuracy_list = Vec::new();
 
     for epoch in 0..4 {
         for mbi in 0..input.shape[3]/bs {
@@ -68,16 +69,20 @@ fn main() {
             let a = l1.fwd(x); // 13.0%
             let b = r.fwd(a); // 0.2%
             let c = l2.fwd(b); // 0.2%
-            let loss = mse.fwd(c, &y); // <0.1%
+
+            let accuracy = c.argmax(1).equals_(&y.argmax(1)).mean_all();
+            accuracy_list.push(accuracy);
+
+            let loss = ce.fwd(c, &y); // <0.1%
 
             loss_list.push(loss);
 
             // Print Loss
-            println!("Epoch: {}, Minibatch: {}, Loss: {}", epoch, mbi, loss);
+            println!("Epoch: {}, Minibatch: {}, Loss: {}, Accuracy: {}", epoch, mbi, loss, accuracy);
 
             // Backward pass network
             // TODO: cleanup inputs during bwd pass? bwd should return the ownership of its input and set its field to None
-            let loss_grad = mse.bwd(y); // <0.1%
+            let loss_grad = ce.bwd(y); // <0.1%
             //println!("{}", loss_grad);
             let l2_grad = l2.bwd(loss_grad); // 1.2%
             //println!("{}", l2_grad);
@@ -95,6 +100,7 @@ fn main() {
     }
     println!("Training time: {}", start.elapsed().as_micros());
     
+    plot::plot(accuracy_list);
     plot::plot(loss_list);
 
     let mut rng  = rand::thread_rng();
