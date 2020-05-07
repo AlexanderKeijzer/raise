@@ -54,7 +54,7 @@ fn main() {
 
     let start = Instant::now();
 
-    let bs = 32;//input.shape[3];
+    let bs = 32;
 
     let mut loss_list = Vec::new();
 
@@ -65,18 +65,11 @@ fn main() {
             let y = target.get_minibatch(mbi, bs);
 
             // Forward pass network
-            //let start = Instant::now();
-            let a = l1.fwd(x);
-            //println!("{}", start.elapsed().as_micros());
-            //let start = Instant::now();
-            let b = r.fwd(a);
-            //println!("{}", start.elapsed().as_micros());
-            //let start = Instant::now();
-            let c = l2.fwd(b);
-            //println!("{}", start.elapsed().as_micros());
-            //let start = Instant::now();
-            let loss = mse.fwd(c, &y);
-            //println!("{}", start.elapsed().as_micros());
+            let a = l1.fwd(x); // 13.0%
+            let b = r.fwd(a); // 0.2%
+            let c = l2.fwd(b); // 0.2%
+            let loss = mse.fwd(c, &y); // <0.1%
+
             loss_list.push(loss);
 
             // Print Loss
@@ -84,30 +77,18 @@ fn main() {
 
             // Backward pass network
             // TODO: cleanup inputs during bwd pass? bwd should return the ownership of its input and set its field to None
-            //let start = Instant::now();
-            mse.bwd(&y);
-            //println!("{}", start.elapsed().as_micros());
-            //let start = Instant::now();
-            l2.bwd(mse.get_input());
-            //println!("{}", start.elapsed().as_micros());
-            //let start = Instant::now();
-            r.bwd(l2.get_input());
-            //println!("{}", start.elapsed().as_micros());
-            //let start = Instant::now();
-            l1.bwd(r.get_input());
-            //println!("{}", start.elapsed().as_micros());
-            //let start = Instant::now();
+            mse.bwd(&y); // <0.1%
+            l2.bwd(mse.get_input()); // 1.2%
+            r.bwd(l2.get_input()); // <0.1%
+            l1.bwd(r.get_input()); // 82.3%
 
             // Optimizer
-            opt.step(l1.get_parameters());
-            //println!("{}", start.elapsed().as_micros());
-            //let start = Instant::now();
-            opt.step(l2.get_parameters());
-            //println!("{}", start.elapsed().as_micros());
+            opt.step(l1.get_parameters()); // 1.7%
+            opt.step(l2.get_parameters()); // 0.2%
             // Zero gradients?
         }
     }
-    println!("{}", start.elapsed().as_micros());
+    println!("Training time: {}", start.elapsed().as_micros());
     
     //plot::plot(loss_list);
 
@@ -125,10 +106,6 @@ fn main() {
         let targ = y.get_minibatch(i, 1);
         let found = c.get_minibatch(i, 1);
         println!("Target: {}, found: {}", to_index(&targ), to_index(&found));
-        println!("Result: {}", found.logsumexp());
-        let e = found.clone().exp();
-        println!("Result: {}", (&e/(e.sum(1))).ln());
-        println!("Result: {}", (&found - found.logsumexp()).exp());
         //plot::imshow(&inp, Some([28, 28]));
     }
     
