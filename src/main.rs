@@ -50,7 +50,7 @@ fn main() {
     let mut l2 = Linear::new([hidden_layer, target.shape[1]]);
     let mut mse = MSE::new(target.shape[1]);
 
-    let opt = SGD::new(0.01);
+    let opt = SGD::new(0.03);
 
     let start = Instant::now();
 
@@ -58,7 +58,7 @@ fn main() {
 
     let mut loss_list = Vec::new();
 
-    for epoch in 0..1 {
+    for epoch in 0..5 {
         for mbi in 0..input.shape[3]/bs {
 
             let x = input.get_minibatch(mbi, bs);
@@ -108,8 +108,8 @@ fn main() {
         }
     }
     println!("{}", start.elapsed().as_micros());
-    /*
-    plot::plot(loss_list);
+    
+    //plot::plot(loss_list);
 
     let mut rng  = rand::thread_rng();
     let pos = rng.gen_range(0, input.shape[3]/5);
@@ -129,9 +129,9 @@ fn main() {
         let e = found.clone().exp();
         println!("Result: {}", (&e/(e.sum(1))).ln());
         println!("Result: {}", (&found - found.logsumexp()).exp());
-        plot::imshow(&inp, Some([28, 28]));
+        //plot::imshow(&inp, Some([28, 28]));
     }
-    */
+    
 }
 
 fn to_index(tensor: &Tensor) -> usize {

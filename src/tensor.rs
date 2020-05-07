@@ -6,6 +6,7 @@ use std::fmt;
 use std::fmt::Display;
 use rand::prelude::*;
 use rand_distr::StandardNormal;
+use std::cmp;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Tensor {
@@ -240,6 +241,28 @@ fn get_axis_steps(shape: [usize; 4]) -> [usize; 4]{
     step_size
 }
 
+fn for_each_sample<T>(t1: &Tensor, t2: &Tensor, result: &mut Tensor, operation: T)
+where T: Fn(&[f32], &[f32], &mut [f32]) {
+    let as_t1 =  get_axis_steps(t1.shape);
+    let as_t2 =  get_axis_steps(t2.shape);
+    let as_result =  get_axis_steps(result.shape);
+    for b in 0..t2.shape[3] {
+        let b_t1 = if t1.shape[3] == 1 {0} else {b};
+        let b_t2 = if t2.shape[3] == 1 {0} else {b};
+        for c in 0..t1.shape[2] {
+            let s_t1 = b_t1*as_t1[3]+c*as_t1[2];
+            let s_t2 = b_t2*as_t2[3]+c*as_t2[2];
+            let s_result = b*as_result[3]+c*as_result[2];
+
+            let sample_t1 = &t1.values[s_t1..s_t1+as_t1[2]];
+            let sample_t2 = &t2.values[s_t2..s_t2+as_t2[2]];
+            let out = &mut result.values[s_result..s_result+as_result[2]];
+            operation(sample_t1, sample_t2, out);
+        }
+    }
+}
+
+
 /*
 Indexing
 */
@@ -319,8 +342,17 @@ impl Mul<&Tensor> for &Tensor {
         //TODO: Allow broadcasting
         assert!(self.shape[0]==rhs.shape[1]);
         assert!(self.shape[2]==rhs.shape[2]);
-        assert!(self.shape[3]==rhs.shape[3] || self.shape[3] == 1);
+        assert!(self.shape[3]==rhs.shape[3] || self.shape[3] == 1 || rhs.shape[3] == 1);
 
+        if rhs.shape[0] == 1 {
+            matrix_vector_mul(self, rhs)
+        } else if self.shape[0] == 1 && rhs.shape[1] == 1 {
+            vector_vector_mul(self, rhs)
+        } else {
+            mat_mul(self, rhs)
+        }
+        
+        /*
         let mut t = Tensor::zeros([rhs.shape[0], self.shape[1], self.shape[2], rhs.shape[3]]);
         for b in 0..rhs.shape[3] {
             let mut bb = b;
@@ -341,7 +373,87 @@ impl Mul<&Tensor> for &Tensor {
             }
         }
         t
+        */
     }
+}
+
+fn matrix_vector_mul(matrix: &Tensor, vector: &Tensor) -> Tensor {
+    let mut t = Tensor::zeros([vector.shape[0], matrix.shape[1], matrix.shape[2], cmp::max(matrix.shape[3], vector.shape[3])]);
+
+    for_each_sample(matrix, vector, &mut t, |mat, vec, out| {
+        for j in 0..matrix.shape[1] {
+            let row = &mat[j*matrix.shape[0]..((j+1)*matrix.shape[0])];
+            let mut res: f32 = 0.0;
+            for i in 0..matrix.shape[0] {
+                res += row[i]*vec[i];
+            }
+            out[j] = res;
+        }
+    });
+
+    /*
+    let axis_steps_self =  get_axis_steps(matrix.shape);
+    let axis_steps_rhs =  get_axis_steps(vector.shape);
+    let axis_steps_res =  get_axis_steps(t.shape);
+    for b in 0..vector.shape[3] {
+        let mut bb = b;
+        if matrix.shape[3] == 1 {
+            bb = 0;
+        }
+        for c in 0..matrix.shape[2] {
+            let ss = bb*axis_steps_self[3]+c*axis_steps_self[2];
+            let sr = b*axis_steps_rhs[3]+c*axis_steps_rhs[2];
+            let st = b*axis_steps_res[3]+c*axis_steps_res[2];
+
+            let out = &mut t.values[st..st+matrix.shape[1]];
+            let item_self = &matrix.values[ss..ss+matrix.shape[1]*matrix.shape[0]];
+            let item_rhs = &vector.values[sr..sr+matrix.shape[0]];
+
+            for j in 0..matrix.shape[1] {
+                let row = &item_self[j*matrix.shape[0]..((j+1)*matrix.shape[0])];
+                //let vec = &vector.values[sr..sr+matrix.shape[0]];
+                let mut res: f32 = 0.0;
+                for i in 0..matrix.shape[0] {
+                    res += row[i]*item_rhs[i];
+                }
+                out[j] = res;
+            }
+        }
+    }
+    */
+    return t;
+}
+
+fn mat_mul(m1: &Tensor, m2: &Tensor) -> Tensor {
+    let mut t = Tensor::zeros([m2.shape[0], m1.shape[1], m1.shape[2], cmp::max(m1.shape[3], m2.shape[3])]);
+
+    for_each_sample(m1, m2, &mut t, |mat1, mat2, out| {
+        for i in 0..m2.shape[0] {
+            for j in 0..m1.shape[1] {
+                //let row = &mat1[j*m1.shape[0]..((j+1)*m1.shape[0])];
+                let mut res: f32 = 0.0;
+                for k in 0..m1.shape[0] {
+                    //res = kj + ik
+                    res += mat1[k+j*m1.shape[0]]*mat2[i+k*m2.shape[0]];
+                }
+                //ij
+                out[i+j*m2.shape[0]] = res;
+            }
+        }
+    });
+    t
+}
+
+fn vector_vector_mul(v1: &Tensor, v2: &Tensor) -> Tensor {
+    let mut t = Tensor::zeros([v2.shape[0], v1.shape[1], v1.shape[2], cmp::max(v1.shape[3], v2.shape[3])]);
+    for_each_sample(v1, v2, &mut t, |vec1, vec2, out| {
+        for j in 0..v1.shape[1] {
+            for i in 0..v2.shape[0] {
+                out[i+j*v2.shape[0]] += vec1[j]*vec2[i];
+            }
+        }
+    });
+    t
 }
 
 impl Mul<f32> for &Tensor {
@@ -614,6 +726,17 @@ impl Add<Tensor> for Tensor {
     }
 }
 
+impl Add<f32> for Tensor {
+    type Output = Tensor;
+
+    fn add(mut self, rhs: f32) -> Tensor {
+        for i in 0..self.values.len() {
+            self.values[i] += rhs;
+        }
+        self
+    }
+}
+
 /*
 Subtraction
 */
@@ -786,15 +909,41 @@ mod tests {
     fn multiplication() {
         use std::time::Instant;
 
-        let A = Tensor::count([300, 300, 1, 1]);
-        let x = Tensor::count([1, 300, 1, 1000]);
+        let A = Tensor::count([300, 300, 1, 100]);
+        let x = Tensor::count([1, 300, 1, 100]);
+        //let xt = Tensor::count([80, 1, 1, 100]);
+        let xt = x.transpose();
 
         //println!("{}", A);
         //println!("{}", x);
         let start = Instant::now();
         let s = &A*&x;
         println!("Mul: {}", start.elapsed().as_micros());
-        println!("Mul res: {}", s.values[5]);
+        //println!("{}", s);
+
+        
+        let start = Instant::now();
+        let s2 = (&x*&xt);
+        println!("Tmul: {}", start.elapsed().as_micros());
+        //println!("{}", s2);
+
+        /*
+        let start = Instant::now();
+        let s3 = &(x.sum(3))*&(xt.sum(3));
+        //println!("Mul: {}", start.elapsed().as_micros());
+        */
+        //println!("{}", s2);
+        //println!("{}", s3);
+        
+        
+        
+        let start = Instant::now();
+        let s1 = &A*&A;
+        println!("Mul: {}", start.elapsed().as_micros());
+        //println!("{}", s1);
+        
+        
+
     }
 
     #[test]
