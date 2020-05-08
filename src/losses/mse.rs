@@ -6,7 +6,7 @@ pub struct MSE {
 }
 
 impl MSE {
-    pub fn new(size: usize) -> MSE {
+    pub fn new() -> MSE {
         MSE {
             input: None
         }

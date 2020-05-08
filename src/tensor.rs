@@ -188,13 +188,17 @@ impl Tensor {
         self.reduce_axis(axis, 0., |a, b| a + b/(self.shape[axis] as f32))
     }
 
-    pub fn norm(mut self) -> Tensor {
-        let mean = self.values.iter().sum::<f32>()/(self.values.len() as f32);
+    pub fn std(&self) -> f32 {
+        let mean = self.mean_all();
+        (self.values.iter().map(|val| (val - mean).powi(2)).sum::<f32>()/(self.values.len() as f32)).sqrt()
+    }
+
+    pub fn norm(&mut self) {
+        let mean = self.mean_all();
         let std: f32 = (self.values.iter().map(|val| (val - mean).powi(2)).sum::<f32>()/(self.values.len() as f32)).sqrt();
         for i in 0..self.values.len() {
             self.values[i] = (self.values[i] - mean) / std;
         }
-        self
     }
 
     pub fn exp(mut self) -> Tensor {
@@ -276,11 +280,17 @@ impl Tensor {
         self.shape[0]*self.shape[1]*self.shape[2]
     }
 
-    pub fn get_minibatch(&self, position: usize, amount: usize) -> Tensor {
-        let last_item = position*self.item_size() + amount*self.item_size();
-        assert!(last_item <= self.values.len());
-        let shape = [self.shape[0], self.shape[1], self.shape[2], amount];
-        Tensor::new(self.values[position*self.item_size()..last_item].to_vec(), shape)
+    pub fn get_minibatch(&self, start: usize, end: usize) -> Tensor {
+        assert!(end*self.item_size() <= self.values.len());
+        let shape = [self.shape[0], self.shape[1], self.shape[2], end-start];
+        Tensor::new(self.values[start*self.item_size()..end*self.item_size()].to_vec(), shape)
+    }
+
+    pub fn split(mut self, size_first: f32) -> (Tensor, Tensor) {
+        let len_first = (size_first*(self.shape[3] as f32)).floor() as usize;
+        let second = self.values.split_off(len_first*self.item_size());
+        (Tensor::new(self.values, [self.shape[0], self.shape[1], self.shape[2], len_first]),
+         Tensor::new(second, [self.shape[0], self.shape[1], self.shape[2], self.shape[3] - len_first]))
     }
 }
 
@@ -803,6 +813,17 @@ impl Sub<Tensor> for Tensor {
 
     fn sub(self, rhs: Tensor) -> Tensor {
         broadcast(TensorType::Owned(self), TensorType::Owned(rhs), |a, b| a - b)
+    }
+}
+
+impl Sub<f32> for Tensor {
+    type Output = Tensor;
+
+    fn sub(mut self, rhs: f32) -> Tensor {
+        for i in 0..self.values.len() {
+            self.values[i] -= rhs;
+        }
+        self
     }
 }
 

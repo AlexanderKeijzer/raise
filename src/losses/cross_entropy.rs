@@ -6,7 +6,7 @@ pub struct CrossEntropy {
 }
 
 impl CrossEntropy {
-    pub fn new(size: usize) -> CrossEntropy {
+    pub fn new() -> CrossEntropy {
         CrossEntropy {
             input: None
         }

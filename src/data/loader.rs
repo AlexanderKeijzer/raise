@@ -1,7 +1,9 @@
 use std::fs::File;
-use crate::tensor::Tensor;
 
-pub fn read(file_path: &str) -> (Tensor, Tensor) {
+use crate::tensor::Tensor;
+use crate::data::dataset::DataSet;
+
+pub fn read(file_path: &str) -> DataSet {
     let file = File::open(file_path).unwrap();
     let mut rdr = csv::Reader::from_reader(file);
     let mut data: Vec<f32> = Vec::new();
@@ -19,5 +21,5 @@ pub fn read(file_path: &str) -> (Tensor, Tensor) {
     }
     let data_tensor = Tensor::new(data, [1, 784, 1, n_records]);
     let target_tensor = Tensor::new(target, [1, 10, 1, n_records]);
-    (data_tensor, target_tensor)
+    DataSet::new(data_tensor, target_tensor)
 }

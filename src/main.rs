@@ -6,13 +6,13 @@ mod ops;
 mod losses;
 mod optimizers;
 mod data;
-mod tensor_view;
 
 use tensor::Tensor;
 use std::time::Instant;
 use layers::layer::Layer;
 use layers::linear::Linear;
 use activiations::relu::ReLU;
+use activiations::mrelu::mReLU;
 use losses::loss::Loss;
 use losses::mse::MSE;
 use losses::cross_entropy::CrossEntropy;
@@ -20,89 +20,132 @@ use optimizers::optimizer::Optimizer;
 use optimizers::sgd::SGD;
 use data::loader;
 use data::plot;
+use data::dataloader::DataLoader;
+use layers::sequential::Sequential;
 
 extern crate rand;
 
-use rand::Rng;
-
-
 fn main() {
-
-    //let t = Tensor::new(vec![0., 1., 2., 3., 4., 5., 6., 7., 8.], [1, 3, 1, 3]);
-    //let ts = t.logsumexp();
-    //print!("{}",ts);
-    //let t2 = Tensor::new(vec![0., 1., 2., 3., 4., 5., 6., 7., 8.], [3, 3, 1, 1]);
-    //let t3 = &t*&t2;
-    //print!("{}",&t*2.);
-    //print!("{}",t2);
-    //print!("{}",t3);
-    
-    let (mut input, target) = loader::read("C:/Users/alty/Downloads/MNIST/train.csv");
+    let mut dataset = loader::read("data/train.csv");
     println!("Loaded dataset");
-    input = input.norm();
 
     // Init data
     let hidden_layer = 50;
 
-    // Init network
-    let mut l1 = Linear::new([input.shape[1], hidden_layer]);
-    let mut r = ReLU::new(hidden_layer);
-    let mut l2 = Linear::new([hidden_layer, target.shape[1]]);
-    let mut ce = CrossEntropy::new(target.shape[1]);
+    // Init model
+    let mut model = Sequential::new(vec![
+        Box::new(Linear::new([dataset.input_shape()[1], hidden_layer], "relu")),
+        Box::new(ReLU::new()),
+        Box::new(Linear::new([hidden_layer, dataset.target_shape()[1]], "")),
+    ]);
 
-    let opt = SGD::new(0.001);
+    let mut loss_func = MSE::new();
+    let mut optimizer = SGD::new(0.05);
 
-    let start = Instant::now();
+    let batch_size = 64;
 
-    let bs = 32;
+    // Init data loaders
+    dataset.norm_input();
+    let (train_set, valid_set) = dataset.split(0.8);
+    let train_loader = DataLoader::new(train_set, batch_size, true);
+    let valid_loader = DataLoader::new(valid_set, batch_size, false);
 
-    let mut loss_list = Vec::new();
-    let mut accuracy_list = Vec::new();
+    fit(5, &mut model, &mut loss_func, &mut optimizer, &train_loader, &valid_loader);
+}
 
-    for epoch in 0..4 {
-        for mbi in 0..input.shape[3]/bs {
 
-            let x = input.get_minibatch(mbi, bs);
-            let y = target.get_minibatch(mbi, bs);
+fn accuracy(prediction: &Tensor, target: &Tensor) -> f32 {
+    prediction.argmax(1).equals_(&target.argmax(1)).mean_all()
+}
 
-            // Forward pass network
-            let a = l1.fwd(x); // 13.0%
-            let b = r.fwd(a); // 0.2%
-            let c = l2.fwd(b); // 0.2%
+fn fit(epochs: usize, model: &mut dyn Layer, loss: &mut dyn Loss, optimizer: &mut dyn Optimizer, train_loader: &DataLoader, valid_loader: &DataLoader) {
+    for epoch in 0..epochs {
+        let start = Instant::now();
+        let mut accu = 0.;
+        for (x, y) in train_loader.batches() {
 
-            let accuracy = c.argmax(1).equals_(&y.argmax(1)).mean_all();
-            accuracy_list.push(accuracy);
+            let y_hat = model.fwd(x);
+            accu += accuracy(&y_hat, &y);
 
-            let loss = ce.fwd(c, &y); // <0.1%
+            //let curr_loss = loss.fwd(y_hat, &y);
 
-            loss_list.push(loss);
+            let loss_grad = loss.bwd(y);
+            model.bwd(loss_grad);
 
-            // Print Loss
-            println!("Epoch: {}, Minibatch: {}, Loss: {}, Accuracy: {}", epoch, mbi, loss, accuracy);
+            optimizer.step(model.get_parameters());
+        }
 
-            // Backward pass network
-            // TODO: cleanup inputs during bwd pass? bwd should return the ownership of its input and set its field to None
-            let loss_grad = ce.bwd(y); // <0.1%
-            //println!("{}", loss_grad);
-            let l2_grad = l2.bwd(loss_grad); // 1.2%
-            //println!("{}", l2_grad);
-            let r_grad = r.bwd(l2_grad); // <0.1%
-            //println!("{}", r_grad);
-            let l1_grad = l1.bwd(r_grad); // 82.3%
-            //println!("{}", l1_grad);
+        let mut accu_val = 0.;
+        for (x, y) in valid_loader.batches() {
+            let y_hat = model.fwd(x);
+            accu_val += accuracy(&y_hat, &y);
+        }
 
-            // Optimizer
-            opt.step(l1.get_parameters()); // 1.7%
-            opt.step(l2.get_parameters()); // 0.2%
-            //panic!();
-            // Zero gradients?
+        accu /= train_loader.len() as f32;
+        accu_val /= valid_loader.len() as f32;
+
+        println!("Epoch {}: Train Accuracy: {:.3}, Valid Accuracy: {:.3}, Elapsed Time: {:.2}s", epoch, accu, accu_val, start.elapsed().as_secs_f32());
+    }
+}
+
+
+/*
+fn to_index(tensor: &Tensor) -> usize {
+    let mut res = 0;
+    let mut max = f32::NEG_INFINITY;
+    for i in 0..tensor.shape[1] {
+        if tensor[[0, i, 0, 0]] > max {
+            res = i;
+            max = tensor[[0, i, 0, 0]];
         }
     }
-    println!("Training time: {}", start.elapsed().as_micros());
-    
-    plot::plot(accuracy_list);
-    plot::plot(loss_list);
+    res
+}
+*/
 
+    //let mut loss_list = Vec::new();
+    //let mut accuracy_list = Vec::new();
+    //let mut accuracy_valid_list = Vec::new();
+
+    /*
+    for epoch in 0..4 {
+        let start = Instant::now();
+        let mut accu = 0.;
+        for (x, y) in train_loader.batches() {
+
+            let y_hat = model.fwd(x);
+            accu += accuracy(&y_hat, &y);
+            println!("{}", accuracy(&y_hat, &y));
+
+            let loss = ce.fwd(y_hat, &y);
+            loss_list.push(loss);
+
+            let loss_grad = ce.bwd(y);
+            model.bwd(loss_grad);
+
+            opt.step(model.get_parameters());
+        }
+
+        let mut accu_val = 0.;
+        for (x, y) in valid_loader.batches() {
+            let y_hat = model.fwd(x);
+            accu_val += accuracy(&y_hat, &y);
+        }
+
+        accu /= train_loader.len() as f32;
+        accuracy_list.push(accu);
+        accu_val /= valid_loader.len() as f32;
+        accuracy_valid_list.push(accu_val);
+
+        println!("Epoch {}: Train Accuracy: {:.3}, Valid Accuracy: {:.3}, Elapsed Time: {:.2}s", epoch, accu, accu_val, start.elapsed().as_secs_f32());
+    }
+    */
+
+    //plot::plot(accuracy_list);
+    //plot::plot(accuracy_valid_list);
+    //plot::plot(loss_list);
+
+    /*
     let mut rng  = rand::thread_rng();
     let pos = rng.gen_range(0, input.shape[3]/5);
     let x = input.get_minibatch(pos, 5);
@@ -119,18 +162,4 @@ fn main() {
         println!("Target: {}, found: {}", to_index(&targ), to_index(&found));
         //plot::imshow(&inp, Some([28, 28]));
     }
-    
-}
-
-fn to_index(tensor: &Tensor) -> usize {
-    let mut res = 0;
-    let mut max = f32::NEG_INFINITY;
-    for i in 0..tensor.shape[1] {
-        if tensor[[0, i, 0, 0]] > max {
-            res = i;
-            max = tensor[[0, i, 0, 0]];
-        }
-    }
-    res
-}
-
+    */

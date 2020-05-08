@@ -4,7 +4,7 @@ pub trait Layer {
 
     fn forward(&self, input: &Tensor) -> Tensor;
 
-    fn fwd(&mut self, input: Tensor) -> Tensor{
+    fn fwd(&mut self, input: Tensor) -> Tensor {
         let tmp = self.forward(&input);
         self.set_input(input);
         tmp

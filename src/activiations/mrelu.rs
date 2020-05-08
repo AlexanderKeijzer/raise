@@ -1,22 +1,22 @@
 use crate::tensor::Tensor;
 use crate::layers::layer::Layer;
 use crate::ops::ops;
-pub struct ReLU {
+pub struct mReLU {
     input: Option<Tensor>,
 }
 
-impl ReLU {
-    pub fn new() -> ReLU {
-        ReLU {
+impl mReLU {
+    pub fn new() -> mReLU {
+        mReLU {
             input: None,
         }
     }
 }
 
-impl Layer for ReLU {
+impl Layer for mReLU {
 
     fn forward(&self, tensor: &Tensor) -> Tensor {
-        ops::max(0., tensor)
+        ops::max(0., tensor) - 0.5
     } 
 
     fn backward(&mut self, input: Tensor, output_grad: Tensor) -> Tensor {

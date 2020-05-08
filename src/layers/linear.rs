@@ -4,16 +4,23 @@ use super::layer::Layer;
 
 pub struct Linear {
     input: Option<Tensor>,
-    weights: Tensor,
+    pub weights: Tensor,
     biases: Tensor
 }
 
 impl Linear {
-    pub fn new(shape: [usize; 2]) -> Linear {
+    pub fn new(shape: [usize; 2], init: &str) -> Linear {
+
+        let scalar;
+        if init.eq("relu") {
+            scalar = (2./(shape[0] as f32)).sqrt();
+        } else {
+            scalar = (1./(shape[0] as f32)).sqrt();
+        }
 
         Linear {
             input: None,
-            weights: Tensor::rand([shape[0], shape[1], 1, 1])/((shape[1] as f32).sqrt()), // He/Kaiming initialization?
+            weights: Tensor::rand([shape[0], shape[1], 1, 1])*scalar, // He/Kaiming initialization?
             biases: Tensor::zeros([1, shape[1], 1, 1])
         }
     }
