@@ -1,6 +1,8 @@
 use crate::tensor::Tensor;
 use crate::layers::layer::Layer;
 use crate::ops::ops;
+
+#[allow(non_camel_case_types)]
 pub struct mReLU {
     input: Option<Tensor>,
 }

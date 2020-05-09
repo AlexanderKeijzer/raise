@@ -25,7 +25,6 @@ impl Tensor {
             gradient: None
         }
     }
-    //pub fn new(values:Vec<f32>, shape: [usize; 3]) -> Tensor {Tensor::new(values, [shape, 1])}
 
     pub fn zeros(shape: [usize; 4]) -> Tensor {
         Tensor {
@@ -76,7 +75,6 @@ impl Tensor {
         self.values.clone()
     }
 
-    //TODO: redo on 1D vec, this seems very inefficent
     pub fn transpose_(mut self) -> Tensor {
         let new_shape = [self.shape[1], self.shape[0], self.shape[2], self.shape[3]];
 
@@ -257,25 +255,6 @@ impl Tensor {
         result
     }
 
-    /*
-    pub fn select(&self, selection: &[usize], axis: usize) -> Tensor {
-        let mut n_shape = self.shape;
-        n_shape[axis] = 1;
-        let mut select = [false, false, false, false];
-        select[axis] = true;
-        let mut result = Tensor::zeros(n_shape);
-        for b in 0..result.values.len() {
-            for c in 0..result.values.len() {
-                for j in 0..result.values.len() {
-                    for i in 0..result.values.len() {
-                        result[i] = self.values[i]
-                    }
-                }
-            }
-        }
-    }
-    */
-
     pub fn item_size(&self) -> usize {
         self.shape[0]*self.shape[1]*self.shape[2]
     }
@@ -345,73 +324,88 @@ where T: Fn(&[f32], &[f32], &mut [f32]) {
     }
 }
 
-
 /*
-Indexing
+Broadcasting addition is now faster than equal size addition!
 */
+fn broadcast<T>(t1: TensorType, t2: TensorType, operation: T) -> Tensor
+    where T: Fn(f32, f32) -> f32 {
+    let s_t1 = t1.get_shape();
+    let s_t2 = t2.get_shape();
 
-impl Index<[usize; 4]> for Tensor {
-    type Output = f32;
+    // Shortcutting equal size tensors is not siginificantly faster
 
-    fn index(&self, indices: [usize; 4]) -> &f32 {
-        &self.values[flatten_indices(&self, indices)]
+    let mut broadcasted = 0;
+    let mut broadcast_axis = [false, false, false, false];
+
+    for i in 0..s_t1.len() {
+        if s_t1[i] > s_t2[i] {
+            assert!(s_t2[i] == 1, "Axis {} is not of equal length or 1!", i);
+            if broadcasted == 2 {
+                panic!("Can only broadcast one way: One of the Tensors in this operation needs to be bigger or as big as the other Tensor in every dimension!");
+            }
+            broadcast_axis[i] = true;
+            broadcasted = 1;
+        } else if s_t1[i] < s_t2[i] {
+            assert!(s_t1[i] == 1, "Axis {} is not of equal length or 1!", i);
+            if broadcasted == 1 {
+                panic!("Can only broadcast one way: One of the Tensors in this operation needs to be bigger or as big as the other Tensor in every dimension!");
+            }
+            broadcast_axis[i] = true;
+            broadcasted = 2;
+        }
     }
-}
 
-impl Index<[usize; 3]> for Tensor {
-    type Output = f32;
+    // Shrink or seperate this
 
-    fn index(&self, indices: [usize; 3]) -> &f32 {
-        &self.values[flatten_indices(&self, [indices[0], indices[1], indices[2], 0])]
+    let mut t_owner;
+    let t_broadcaster;
+    if broadcasted == 1 {
+        if t1.is_owned() {
+            t_owner = t1.get_owned();
+        } else {
+            t_owner = t1.get_reference().clone();
+        }
+        t_broadcaster = t2.get_reference();
+    } else if broadcasted == 2 {
+        if t2.is_owned() {
+            t_owner = t2.get_owned();
+        } else {
+            t_owner = t2.get_reference().clone();
+        }
+        t_broadcaster = t1.get_reference();
+    } else {
+        if t1.is_owned() {
+            t_owner = t1.get_owned();
+            t_broadcaster = t2.get_reference();
+        } else if t2.is_owned() {
+            t_owner = t2.get_owned();
+            t_broadcaster = t1.get_reference();
+        } else {
+            t_owner = t1.get_reference().clone();
+            t_broadcaster = t2.get_reference();
+        }
     }
-}
 
-impl Index<[usize; 2]> for Tensor {
-    type Output = f32;
 
-    fn index(&self, indices: [usize; 2]) -> &f32 {
-        &self.values[flatten_indices(&self, [indices[0], indices[1], 0, 0])]
+    let step_size = get_axis_steps(t_owner.shape);
+    let step_size_bc = get_axis_steps(t_broadcaster.shape);
+
+    // Might be possible to compact this up with a smart iterator
+    for b in 0..t_owner.shape[3] {
+        let bb = if broadcast_axis[3] {0} else {b*step_size_bc[3]};
+        for c in 0..t_owner.shape[2] {
+            let cb = if broadcast_axis[2] {bb} else {bb + c*step_size_bc[2]};
+            for j in 0..t_owner.shape[1] {
+                let jb = if broadcast_axis[1] {cb} else {cb + j*step_size_bc[1]};
+                for i in 0..t_owner.shape[0] {
+                    let ib = if broadcast_axis[0] {jb} else {jb + i};
+                    let index = b*step_size[3]+c*step_size[2]+j*step_size[1]+i;
+                    t_owner.values[index] = operation(t_owner.values[index], t_broadcaster.values[ib]);
+                }
+            }
+        }
     }
-}
-
-impl Index<usize> for Tensor {
-    type Output = f32;
-
-    fn index(&self, index: usize) -> &f32 {
-        &self.values[flatten_indices(&self, [index, 0, 0, 0])]
-    }
-}
-
-impl IndexMut<[usize; 4]> for Tensor {
-
-    fn index_mut(&mut self, indices: [usize; 4]) -> &mut f32 {
-        let index = flatten_indices(&self, indices);
-        &mut self.values[index]
-    }
-}
-
-impl IndexMut<[usize; 3]> for Tensor {
-
-    fn index_mut(&mut self, indices: [usize; 3]) -> &mut f32 {
-        let index = flatten_indices(&self, [indices[0], indices[1], indices[2], 0]);
-        &mut self.values[index]
-    }
-}
-
-impl IndexMut<[usize; 2]> for Tensor {
-
-    fn index_mut(&mut self, indices: [usize; 2]) -> &mut f32 {
-        let index = flatten_indices(&self, [indices[0], indices[1], 0, 0]);
-        &mut self.values[index]
-    }
-}
-
-impl IndexMut<usize> for Tensor {
-
-    fn index_mut(&mut self, index: usize) -> &mut f32 {
-        let index = flatten_indices(&self, [index, 0, 0, 0]);
-        &mut self.values[index]
-    }
+    t_owner
 }
 
 /*
@@ -616,127 +610,6 @@ impl Div<f32> for &Tensor {
 Addition
 */
 
-enum TensorType<'a> {
-    Owned(Tensor),
-    Reference(&'a Tensor)
-}
-
-impl<'a> TensorType<'a> {
-
-    pub fn is_owned(&self) -> bool {
-        matches!(*self, TensorType::Owned(_))
-    }
-
-    pub fn is_ref(&self) -> bool {
-        !self.is_owned()
-    }
-
-    pub fn get_shape(&self) -> [usize; 4] {
-        match self {
-            TensorType::Owned(t) => t.shape,
-            TensorType::Reference(t) => t.shape,
-        }
-    }
-
-    pub fn get_owned(self) -> Tensor {
-        match self {
-            TensorType::Owned(t) => t,
-            TensorType::Reference(_) => panic!("Requested owned Tensor but TensorType is not owned!"),
-        }
-    }
-
-    pub fn get_reference(&'a self) -> &'a Tensor {
-        match self {
-            TensorType::Owned(t) => t,
-            TensorType::Reference(t) => *t,
-        }
-    }
-}
-
-/*
-Broadcasting addition is now faster than equal size addition!
-*/
-fn broadcast<T>(t1: TensorType, t2: TensorType, operation: T) -> Tensor
-    where T: Fn(f32, f32) -> f32 {
-    let s_t1 = t1.get_shape();
-    let s_t2 = t2.get_shape();
-
-    // Shortcutting equal size tensors is not siginificantly faster
-
-    let mut broadcasted = 0;
-    let mut broadcast_axis = [false, false, false, false];
-
-    for i in 0..s_t1.len() {
-        if s_t1[i] > s_t2[i] {
-            assert!(s_t2[i] == 1, "Axis {} is not of equal length or 1!", i);
-            if broadcasted == 2 {
-                panic!("Can only broadcast one way: One of the Tensors in this operation needs to be bigger or as big as the other Tensor in every dimension!");
-            }
-            broadcast_axis[i] = true;
-            broadcasted = 1;
-        } else if s_t1[i] < s_t2[i] {
-            assert!(s_t1[i] == 1, "Axis {} is not of equal length or 1!", i);
-            if broadcasted == 1 {
-                panic!("Can only broadcast one way: One of the Tensors in this operation needs to be bigger or as big as the other Tensor in every dimension!");
-            }
-            broadcast_axis[i] = true;
-            broadcasted = 2;
-        }
-    }
-
-    // Shrink or seperate this
-
-    let mut t_owner;
-    let t_broadcaster;
-    if broadcasted == 1 {
-        if t1.is_owned() {
-            t_owner = t1.get_owned();
-        } else {
-            t_owner = t1.get_reference().clone();
-        }
-        t_broadcaster = t2.get_reference();
-    } else if broadcasted == 2 {
-        if t2.is_owned() {
-            t_owner = t2.get_owned();
-        } else {
-            t_owner = t2.get_reference().clone();
-        }
-        t_broadcaster = t1.get_reference();
-    } else {
-        if t1.is_owned() {
-            t_owner = t1.get_owned();
-            t_broadcaster = t2.get_reference();
-        } else if t2.is_owned() {
-            t_owner = t2.get_owned();
-            t_broadcaster = t1.get_reference();
-        } else {
-            t_owner = t1.get_reference().clone();
-            t_broadcaster = t2.get_reference();
-        }
-    }
-
-
-    let step_size = get_axis_steps(t_owner.shape);
-    let step_size_bc = get_axis_steps(t_broadcaster.shape);
-
-    // Might be possible to compact this up with a smart iterator
-    for b in 0..t_owner.shape[3] {
-        let bb = if broadcast_axis[3] {0} else {b*step_size_bc[3]};
-        for c in 0..t_owner.shape[2] {
-            let cb = if broadcast_axis[2] {bb} else {bb + c*step_size_bc[2]};
-            for j in 0..t_owner.shape[1] {
-                let jb = if broadcast_axis[1] {cb} else {cb + j*step_size_bc[1]};
-                for i in 0..t_owner.shape[0] {
-                    let ib = if broadcast_axis[0] {jb} else {jb + i};
-                    let index = b*step_size[3]+c*step_size[2]+j*step_size[1]+i;
-                    t_owner.values[index] = operation(t_owner.values[index], t_broadcaster.values[ib]);
-                }
-            }
-        }
-    }
-    t_owner
-}
-
 impl Add<&Tensor> for &Tensor {
     type Output = Tensor;
 
@@ -777,6 +650,41 @@ impl Add<f32> for Tensor {
             self.values[i] += rhs;
         }
         self
+    }
+}
+
+impl Add<Tensor> for f32 {
+    type Output = Tensor;
+
+    fn add(self, mut rhs: Tensor) -> Tensor {
+        for i in 0..rhs.values.len() {
+            rhs.values[i] += self;
+        }
+        rhs
+    }
+}
+
+impl Add<f32> for &Tensor {
+    type Output = Tensor;
+
+    fn add(self, rhs: f32) -> Tensor {
+        let mut t = self.clone();
+        for i in 0..t.values.len() {
+            t.values[i] += rhs;
+        }
+        t
+    }
+}
+
+impl Add<&Tensor> for f32 {
+    type Output = Tensor;
+
+    fn add(self, rhs: &Tensor) -> Tensor {
+        let mut t = rhs.clone();
+        for i in 0..t.values.len() {
+            t.values[i] += self;
+        }
+        t
     }
 }
 
@@ -829,7 +737,6 @@ impl Sub<f32> for Tensor {
 
 impl SubAssign<f32> for &mut Tensor {
     fn sub_assign(&mut self, rhs: f32) {
-
         for i in 0..self.values.len() {
             self.values[i] -= rhs;
         }
@@ -866,7 +773,88 @@ impl SubAssign<&Tensor> for Tensor {
     }
 }
 
+/*
+Indexing
+*/
 
+impl Index<[usize; 4]> for Tensor {
+    type Output = f32;
+
+    fn index(&self, indices: [usize; 4]) -> &f32 {
+        &self.values[flatten_indices(&self, indices)]
+    }
+}
+
+impl Index<[usize; 3]> for Tensor {
+    type Output = f32;
+
+    fn index(&self, indices: [usize; 3]) -> &f32 {
+        &self.values[flatten_indices(&self, [indices[0], indices[1], indices[2], 0])]
+    }
+}
+
+impl Index<[usize; 2]> for Tensor {
+    type Output = f32;
+
+    fn index(&self, indices: [usize; 2]) -> &f32 {
+        &self.values[flatten_indices(&self, [indices[0], indices[1], 0, 0])]
+    }
+}
+
+impl Index<[usize; 1]> for Tensor {
+    type Output = f32;
+
+    fn index(&self, indices: [usize; 1]) -> &f32 {
+        &self.values[flatten_indices(&self, [indices[0], 0, 0, 0])]
+    }
+}
+
+impl Index<usize> for Tensor {
+    type Output = f32;
+
+    fn index(&self, index: usize) -> &f32 {
+        &self.values[index]
+    }
+}
+
+impl IndexMut<[usize; 4]> for Tensor {
+
+    fn index_mut(&mut self, indices: [usize; 4]) -> &mut f32 {
+        let index = flatten_indices(&self, indices);
+        &mut self.values[index]
+    }
+}
+
+impl IndexMut<[usize; 3]> for Tensor {
+
+    fn index_mut(&mut self, indices: [usize; 3]) -> &mut f32 {
+        let index = flatten_indices(&self, [indices[0], indices[1], indices[2], 0]);
+        &mut self.values[index]
+    }
+}
+
+impl IndexMut<[usize; 2]> for Tensor {
+
+    fn index_mut(&mut self, indices: [usize; 2]) -> &mut f32 {
+        let index = flatten_indices(&self, [indices[0], indices[1], 0, 0]);
+        &mut self.values[index]
+    }
+}
+
+impl IndexMut<[usize; 1]> for Tensor {
+
+    fn index_mut(&mut self, indices: [usize; 1]) -> &mut f32 {
+        let index = flatten_indices(&self, [indices[0], 0, 0, 0]);
+        &mut self.values[index]
+    }
+}
+
+impl IndexMut<usize> for Tensor {
+
+    fn index_mut(&mut self, index: usize) -> &mut f32 {
+        &mut self.values[index]
+    }
+}
 
 impl Display for Tensor {
     
@@ -881,6 +869,39 @@ impl Display for Tensor {
         }
         Ok(())
     } 
+}
+
+enum TensorType<'a> {
+    Owned(Tensor),
+    Reference(&'a Tensor)
+}
+
+impl<'a> TensorType<'a> {
+
+    pub fn is_owned(&self) -> bool {
+        matches!(*self, TensorType::Owned(_))
+    }
+
+    pub fn get_shape(&self) -> [usize; 4] {
+        match self {
+            TensorType::Owned(t) => t.shape,
+            TensorType::Reference(t) => t.shape,
+        }
+    }
+
+    pub fn get_owned(self) -> Tensor {
+        match self {
+            TensorType::Owned(t) => t,
+            TensorType::Reference(_) => panic!("Requested owned Tensor but TensorType is not owned!"),
+        }
+    }
+
+    pub fn get_reference(&'a self) -> &'a Tensor {
+        match self {
+            TensorType::Owned(t) => t,
+            TensorType::Reference(t) => *t,
+        }
+    }
 }
 
 #[cfg(test)]
