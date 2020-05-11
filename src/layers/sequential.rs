@@ -1,5 +1,6 @@
 use crate::layers::layer::Layer;
 use crate::tensor::Tensor;
+use std::ops::{Index, IndexMut};
 
 pub struct Sequential {
     layers: Vec<Box<dyn Layer>>
@@ -50,4 +51,19 @@ impl Layer for Sequential {
         }
         params
     }
+}
+
+impl Index<usize> for Sequential {
+    type Output = Box<dyn Layer>;
+
+    fn index(&self, index: usize) -> &Box<dyn Layer> {
+        &self.layers[index]
+    }
+}
+
+impl IndexMut<usize> for Sequential {
+    fn index_mut(&mut self, index: usize) -> &mut Box<dyn Layer> {
+        &mut self.layers[index]
+    }
+
 }

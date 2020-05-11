@@ -15,11 +15,11 @@ impl CrossEntropy {
 
 impl Loss for CrossEntropy {
     fn forward(&self, input: &Tensor, target: &Tensor) -> f32 {
-        // Calculate the batch mean of the log_softmax prediction of the target
+
+        // TODO with select: Calculate the batch mean of the log_softmax prediction of the target
         // e.g. if target [0 1 0]T and log_softmax(input) = [0.2 0.4 0.3]T result should be 0.4
-        //log_softmax(input);
-        //TEMP MSE!!!
-        (input-target).pow(2.).mean_all()
+
+        -(target*&log_softmax(input)).sum_all()/(input.shape[3] as f32)
     } 
 
     fn backward(&mut self, input: Tensor, target: Tensor) -> Tensor {
@@ -36,5 +36,5 @@ impl Loss for CrossEntropy {
 }
 
 pub fn log_softmax(tensor: &Tensor) -> Tensor {
-    tensor - tensor.logsumexp()
+    tensor - tensor.logsumexp(1)
 }

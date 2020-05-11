@@ -5,7 +5,7 @@ use std::ops::{Index, IndexMut, Mul, Add, Sub, Div, SubAssign};
 use std::fmt;
 use std::fmt::Display;
 use rand::prelude::*;
-use rand_distr::StandardNormal;
+use rand_distr::{StandardNormal, Uniform};
 use std::cmp;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -51,6 +51,26 @@ impl Tensor {
         }
     }
 
+    pub fn uniform(shape: [usize; 4], low: f32, high: f32) -> Tensor {
+        let mut rng = thread_rng();
+        let uni = Uniform::new(low, high);
+        Tensor {
+            shape: shape,
+            values: (0..length_flat_indices(shape)).map(|_| rng.sample(uni)).collect(),
+            gradient: None
+        }
+    }
+
+    pub fn uniform_int(shape: [usize; 4], low: i32, high: i32) -> Tensor {
+        let mut rng = thread_rng();
+        let uni = Uniform::new(low, high);
+        Tensor {
+            shape: shape,
+            values: (0..length_flat_indices(shape)).map(|_| rng.sample(uni) as f32).collect(),
+            gradient: None
+        }
+    }
+
     pub fn count(shape: [usize; 4]) -> Tensor {
         Tensor {
             shape: shape,
@@ -66,8 +86,12 @@ impl Tensor {
         self
     }
 
+    pub fn sum_all(&self) -> f32 {
+        self.values.iter().sum::<f32>()
+    }
+
     pub fn mean_all(&self) -> f32 {
-        (self.values.iter().sum::<f32>())/(self.values.len() as f32)
+        self.sum_all()/(self.values.len() as f32)
     }
 
     pub fn to_vec(&self) -> Vec<f32> {
@@ -213,9 +237,9 @@ impl Tensor {
         self
     }
 
-    pub fn logsumexp(&self) -> Tensor {
-        let max = self.max(1);
-        (self-&max).exp().sum(1).ln() + max
+    pub fn logsumexp(&self, axis: usize) -> Tensor {
+        let max = self.max(axis);
+        (self-&max).exp().sum(axis).ln() + max
     }
 
     pub fn argmax(&self, axis: usize) -> Tensor {
@@ -255,6 +279,52 @@ impl Tensor {
         result
     }
 
+    pub fn outermean3(&self, rhs: &Tensor) -> Tensor {
+        assert!(self.shape[0] == 1);
+        //Accept even if not a column vector as outer product is obv row*column
+        assert!(rhs.shape[0] == 1 || rhs.shape[1] == 1);
+        assert!(self.shape[2] == 1 && self.shape[2] == 1); //TODO: handle channel
+        let s_max = cmp::max(self.shape[3], rhs.shape[3]);
+
+        let mut result = Tensor::zeros([rhs.shape[0]*rhs.shape[1], self.shape[1], 1, 1]);
+
+        for s in 0..s_max {
+            let s_s = &self.values[cmp::min(s, self.shape[3])*self.shape[1]..(cmp::min(s, self.shape[3])+1)*self.shape[1]];
+            let r_s = &rhs.values[cmp::min(s, rhs.shape[3])*rhs.shape[0]*rhs.shape[1]..(cmp::min(s, rhs.shape[3])+1)*rhs.shape[0]*rhs.shape[1]];
+            for j in 0..result.shape[1] {
+                let row_pos = j*result.shape[0];
+                let res = &mut result.values[row_pos..row_pos+result.shape[0]];
+                for i in 0..result.shape[0] {
+                    res[i] += r_s[i]*s_s[j];
+                }
+            }
+        }
+        result/(s_max as f32)
+    }
+
+    pub fn to_one_hot(&self, axis: usize) -> Tensor {
+        assert!(self.shape[axis] == 1);
+        let max = self.values.iter().max_by(|x, y| x.partial_cmp(y).unwrap()).unwrap().round() as usize;
+        let mut n_shape = self.shape;
+        n_shape[axis] = max+1;
+        let mut result = Tensor::zeros(n_shape);
+        for s in 0..self.shape[3] {
+            for c in 0..self.shape[2] {
+                for j in 0..self.shape[1] {
+                    for i in 0..self.shape[0] {
+                        let n_axis = self[[i, j, c, s]].round() as usize;
+                        let s_r = if axis == 3 {n_axis} else {s};
+                        let c_r = if axis == 2 {n_axis} else {c};
+                        let j_r = if axis == 1 {n_axis} else {j};
+                        let i_r = if axis == 0 {n_axis} else {i};
+                        result[[i_r, j_r, c_r, s_r]] = 1.;
+                    }
+                }
+            }
+        }
+        result
+    }
+
     pub fn item_size(&self) -> usize {
         self.shape[0]*self.shape[1]*self.shape[2]
     }
@@ -283,7 +353,7 @@ fn length_flat_indices(indices: [usize; 4]) -> usize {
 
 fn flatten_indices(tensor: &Tensor, indices: [usize; 4]) -> usize {
 
-    assert!(indices.iter().zip(tensor.shape.iter()).all(|(a,b)| a < b));
+    assert!(indices.iter().zip(tensor.shape.iter()).all(|(a,b)| a < b), "Trying to index at {:?} in a tensor of size {:?}", indices, tensor.shape);
 
     let mut index = 0;
     let mut mul = 1;
@@ -456,8 +526,9 @@ fn matrix_vector_mul(matrix: &Tensor, vector: &Tensor) -> Tensor {
 
     for_each_sample(matrix, vector, &mut result, |mat, vec, out| {
         for j in 0..matrix.shape[1] {
-            let row = &mat[j*matrix.shape[0]..((j+1)*matrix.shape[0])];
-
+            let row: &[f32] = &mat[j*matrix.shape[0]..((j+1)*matrix.shape[0])];
+            
+            /*
             let mut res: f32 = 0.0;
             for i in 0..matrix.shape[0] {
                 // res = mat[i,j] * vec[i]
@@ -465,6 +536,10 @@ fn matrix_vector_mul(matrix: &Tensor, vector: &Tensor) -> Tensor {
             }
             // vec[j] = res
             out[j] = res;
+            */
+            
+            
+            out[j] = row.iter().zip(vec.iter()).map(|(r, v)| r*v).sum::<f32>();
         }
     });
     result

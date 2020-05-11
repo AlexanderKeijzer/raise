@@ -20,13 +20,13 @@ fn main() {
 
     // Init model
     let mut model = Sequential::new(vec![
-        Box::new(Linear::new([dataset.input_shape()[1], hidden_layer], "relu")),
+        Box::new(Linear::new([dataset.input_shape()[1], hidden_layer], "pytorch")),
         Box::new(ReLU::new()),
-        Box::new(Linear::new([hidden_layer, dataset.target_shape()[1]], "")),
+        Box::new(Linear::new([hidden_layer, dataset.target_shape()[1]], "pytorch")),
     ]);
 
     let mut loss_func = CrossEntropy::new();
-    let mut optimizer = SGD::new(0.008);
+    let mut optimizer = SGD::new(0.005);
 
     let batch_size = 64;
 
@@ -36,7 +36,7 @@ fn main() {
     let train_loader = DataLoader::new(train_set, batch_size, true);
     let valid_loader = DataLoader::new(valid_set, batch_size, false);
 
-    fit(5, &mut model, &mut loss_func, &mut optimizer, &train_loader, &valid_loader);
+    fit(50, &mut model, &mut loss_func, &mut optimizer, &train_loader, &valid_loader);
 }
 
 

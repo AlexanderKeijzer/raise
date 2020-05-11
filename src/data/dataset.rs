@@ -1,8 +1,8 @@
 use crate::tensor::Tensor;
 
 pub struct DataSet {
-    input: Tensor,
-    target: Tensor
+    pub input: Tensor,
+    pub target: Tensor
 }
 
 impl DataSet {
