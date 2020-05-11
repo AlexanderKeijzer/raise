@@ -20,33 +20,36 @@ use losses::loss::Loss;
 use optimizers::optimizer::Optimizer;
 use data::dataloader::DataLoader;
 
-pub fn fit(epochs: usize, model: &mut dyn Layer, loss: &mut dyn Loss, optimizer: &mut dyn Optimizer, train_loader: &DataLoader, valid_loader: &DataLoader) {
+pub fn fit(epochs: usize, model: &mut dyn Layer, loss_func: &mut dyn Loss, optimizer: &mut dyn Optimizer, train_loader: &DataLoader, valid_loader: &DataLoader) {
     for epoch in 0..epochs {
         let start = Instant::now();
+        
         let mut accu = 0.;
+        let mut loss: f32 = 0.;
         for (x, y) in train_loader.batches() {
-
             let y_hat = model.fwd(x);
             accu += accuracy(&y_hat, &y);
+            loss += loss_func.fwd(y_hat, &y);
 
-            let _curr_loss = loss.fwd(y_hat, &y);
-
-            let loss_grad = loss.bwd(y);
+            let loss_grad = loss_func.bwd(y);
             model.bwd(loss_grad);
-
             optimizer.step(model.get_parameters());
         }
 
         let mut accu_val = 0.;
+        let mut loss_val = 0.;
         for (x, y) in valid_loader.batches() {
             let y_hat = model.fwd(x);
             accu_val += accuracy(&y_hat, &y);
+            loss_val += loss_func.fwd(y_hat, &y);
         }
 
         accu /= train_loader.len() as f32;
         accu_val /= valid_loader.len() as f32;
+        loss /= train_loader.len() as f32;
+        loss_val /= valid_loader.len() as f32;
 
-        println!("Epoch {}: Train Accuracy: {:.3}, Valid Accuracy: {:.3}, Elapsed Time: {:.2}s", epoch, accu, accu_val, start.elapsed().as_secs_f32());
+        println!("Epoch {}: Train Accuracy: {:.3}, Train Loss: {:.3}, Valid Accuracy: {:.3}, Valid Loss: {:.3}, Elapsed Time: {:.2}s", epoch, accu, loss, accu_val, loss_val, start.elapsed().as_secs_f32());
     }
 }
 
