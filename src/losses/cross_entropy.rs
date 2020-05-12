@@ -1,6 +1,7 @@
 use super::loss::Loss;
 use crate::tensor::Tensor;
 
+#[derive(Clone)]
 pub struct CrossEntropy {
     input: Option<Tensor>,
 }

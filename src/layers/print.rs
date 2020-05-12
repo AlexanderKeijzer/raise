@@ -1,6 +1,7 @@
 use crate::layers::layer::Layer;
 use crate::tensor::Tensor;
 
+#[derive(Clone)]
 pub struct Print {
     ident: String
 }

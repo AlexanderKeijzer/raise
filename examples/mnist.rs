@@ -2,7 +2,7 @@ extern crate raise;
 extern crate serde_pickle;
 
 use std::fs::File;
-use raise::fit;
+use raise::*;
 use raise::tensor::Tensor;
 use raise::layers::linear::Linear;
 use raise::activiations::relu::ReLU;
@@ -28,7 +28,7 @@ fn main() {
     ]);
 
     let mut loss_func = CrossEntropy::new();
-    let mut optimizer = SGD::new(0.04);
+    let mut optimizer = SGD::new(0.04); //0.04
 
     let batch_size = 64;
 
@@ -38,6 +38,8 @@ fn main() {
     //let (train_set, valid_set) = dataset.split(0.8);
     let train_loader = DataLoader::new(train_set, batch_size, true);
     let valid_loader = DataLoader::new(valid_set, batch_size, false);
+
+    //lr_find(&mut model, &mut loss_func, &mut optimizer, &train_loader);
 
     fit(50, &mut model, &mut loss_func, &mut optimizer, &train_loader, &valid_loader);
 }

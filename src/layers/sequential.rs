@@ -2,6 +2,7 @@ use crate::layers::layer::Layer;
 use crate::tensor::Tensor;
 use std::ops::{Index, IndexMut};
 
+#[derive(Clone)]
 pub struct Sequential {
     layers: Vec<Box<dyn Layer>>
 }

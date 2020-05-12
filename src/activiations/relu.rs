@@ -1,6 +1,8 @@
 use crate::tensor::Tensor;
 use crate::layers::layer::Layer;
 use crate::ops::ops;
+
+#[derive(Clone)]
 pub struct ReLU {
     input: Option<Tensor>,
 }

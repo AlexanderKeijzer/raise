@@ -2,6 +2,7 @@
 use crate::tensor::Tensor;
 use super::layer::Layer;
 
+#[derive(Clone)]
 pub struct Linear {
     input: Option<Tensor>,
     pub weights: Tensor,

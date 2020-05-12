@@ -2,6 +2,7 @@ use crate::tensor::Tensor;
 use crate::layers::layer::Layer;
 use crate::ops::ops;
 
+#[derive(Clone)]
 #[allow(non_camel_case_types)]
 pub struct mReLU {
     input: Option<Tensor>,

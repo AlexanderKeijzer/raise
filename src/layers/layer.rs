@@ -1,6 +1,7 @@
+use dyn_clone::DynClone;
 use crate::tensor::Tensor;
 
-pub trait Layer {
+pub trait Layer: DynClone {
 
     fn forward(&self, input: &Tensor) -> Tensor;
 
@@ -25,3 +26,5 @@ pub trait Layer {
 
     fn set_input(&mut self, tensor: Tensor);
 }
+
+dyn_clone::clone_trait_object!(Layer);

@@ -1,6 +1,7 @@
 use crate::tensor::Tensor;
+use dyn_clone::DynClone;
 
-pub trait Loss {
+pub trait Loss: DynClone {
 
     fn forward(&self, tensor: &Tensor, target: &Tensor) -> f32;
 

@@ -1,6 +1,7 @@
 use crate::optimizers::optimizer::Optimizer;
 use crate::tensor::Tensor;
 
+#[derive(Clone)]
 pub struct SGD {
     learning_rate: f32,
 }
@@ -20,5 +21,9 @@ impl Optimizer for SGD {
             let delta = self.learning_rate* *tensor.gradient.take().unwrap();
             *tensor -= delta;
         }
+    }
+
+    fn set_learning_rate(&mut self, learning_rate: f32) {
+        self.learning_rate = learning_rate;
     }
 }
