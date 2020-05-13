@@ -279,6 +279,35 @@ impl Tensor {
         result
     }
 
+    pub fn clamp(mut self, min: f32, max: f32) -> Tensor {
+        for i in 0..self.values.len() {
+            if self[i] < min {
+                self.values[i] = min;
+            } else if self[i] > max {
+                self.values[i] = max;
+            } 
+        }
+        self
+    }
+
+    pub fn clamp_min(mut self, min: f32) -> Tensor {
+        for i in 0..self.values.len() {
+            if self[i] < min {
+                self.values[i] = min;
+            }
+        }
+        self
+    }
+
+    pub fn clamp_max(mut self, max: f32) -> Tensor {
+        for i in 0..self.values.len() {
+            if self[i] > max {
+                self.values[i] = max;
+            } 
+        }
+        self
+    }
+
     pub fn outermean3(&self, rhs: &Tensor) -> Tensor {
         assert!(self.shape[0] == 1);
         //Accept even if not a column vector as outer product is obv row*column

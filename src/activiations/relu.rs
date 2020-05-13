@@ -1,6 +1,5 @@
 use crate::tensor::Tensor;
 use crate::layers::layer::Layer;
-use crate::ops::ops;
 
 #[derive(Clone)]
 pub struct ReLU {
@@ -17,8 +16,8 @@ impl ReLU {
 
 impl Layer for ReLU {
 
-    fn forward(&self, tensor: &Tensor) -> Tensor {
-        ops::max(0., tensor)
+    fn forward(&self, input: &Tensor) -> Tensor {
+        input.clone().clamp_min(0.)
     } 
 
     fn backward(&mut self, input: Tensor, output_grad: Tensor) -> Tensor {

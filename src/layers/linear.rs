@@ -42,16 +42,16 @@ impl Linear {
 
 impl Layer for Linear {
 
-    fn forward(&self, tensor: &Tensor) -> Tensor {
-        &self.weights*tensor + &self.biases
+    fn forward(&self, input: &Tensor) -> Tensor {
+        &self.weights*input + &self.biases
     } 
 
     fn backward(&mut self, input: Tensor, output_grad: Tensor) -> Tensor {
 
-        self.weights.gradient = Some(Box::new(output_grad.outermean3(&input))); // 68.5%
-        self.biases.gradient = Some(Box::new(output_grad.mean(3))); // <0.1%
+        self.weights.gradient = Some(Box::new(output_grad.outermean3(&input)));
+        self.biases.gradient = Some(Box::new(output_grad.mean(3)));
 
-        &self.weights.transpose()*&output_grad // 19.1%
+        &self.weights.transpose()*&output_grad
     }
 
     fn get_parameters(&mut self) -> Vec<&mut Tensor> {

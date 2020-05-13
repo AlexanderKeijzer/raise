@@ -6,7 +6,6 @@
 pub mod tensor;
 pub mod layers;
 pub mod activiations;
-pub mod ops;
 pub mod losses;
 pub mod optimizers;
 pub mod data;

@@ -1,6 +1,5 @@
 use crate::tensor::Tensor;
 use crate::layers::layer::Layer;
-use crate::ops::ops;
 
 #[derive(Clone)]
 #[allow(non_camel_case_types)]
@@ -18,8 +17,8 @@ impl mReLU {
 
 impl Layer for mReLU {
 
-    fn forward(&self, tensor: &Tensor) -> Tensor {
-        ops::max(0., tensor) - 0.5
+    fn forward(&self, input: &Tensor) -> Tensor {
+        input.clone().clamp_min(0.) - 0.5
     } 
 
     fn backward(&mut self, input: Tensor, output_grad: Tensor) -> Tensor {
