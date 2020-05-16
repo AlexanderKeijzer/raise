@@ -1,7 +1,7 @@
 extern crate rand;
 extern crate rand_distr;
 
-use std::ops::{Index, IndexMut, Mul, Add, Sub, Div, SubAssign};
+use std::ops::{Index, IndexMut, Mul, Add, Sub, Div, SubAssign, Neg};
 use std::fmt;
 use std::fmt::Display;
 use rand::prelude::*;
@@ -121,6 +121,22 @@ impl Tensor {
     pub fn transpose(&self) -> Tensor {
         let transposed = self.clone();
         transposed.transpose_()
+    }
+
+    pub fn is_between_(mut self, min: f32, max: f32) -> Tensor {
+        for i in 0..self.values.len() {
+            if self.values[i] > min && self.values[i] < max {
+                self.values[i] = 1.;
+            } else {
+                self.values[i] = 0.;
+            }
+        }
+        self
+    }
+
+    pub fn is_between(&self, scalar: f32) -> Tensor {
+        let t = self.clone();
+        t.is_bigger_(scalar)
     }
 
     pub fn is_bigger_(mut self, scalar: f32) -> Tensor {
@@ -874,6 +890,17 @@ impl SubAssign<&Tensor> for Tensor {
         for i in 0..self.values.len() {
             self.values[i] -= rhs.values[i];
         }
+    }
+}
+
+impl Neg for Tensor {
+    type Output = Tensor;
+
+    fn neg(mut self) -> Tensor {
+        for i in 0..self.values.len() {
+            self.values[i] = -self.values[i];
+        }
+        self
     }
 }
 
