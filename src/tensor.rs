@@ -79,9 +79,16 @@ impl Tensor {
         }
     }
 
-    pub fn pow(mut self, exponent: f32) -> Tensor {
+    pub fn powf(mut self, exponent: f32) -> Tensor {
         for i in 0..self.values.len() {
             self.values[i] = self.values[i].powf(exponent);
+        }
+        self
+    }
+
+    pub fn powi(mut self, exponent: i32) -> Tensor {
+        for i in 0..self.values.len() {
+            self.values[i] = self.values[i].powi(exponent);
         }
         self
     }
@@ -613,6 +620,31 @@ fn element_wise_mul(v1: &Tensor, v2: &Tensor) -> Tensor {
     result
 }
 
+// We might be able to do things inplace with sqaure matrices and vec-vec multiplication
+impl Mul<&Tensor> for Tensor {
+    type Output = Tensor;
+
+    fn mul(self, rhs: &Tensor) -> Tensor {
+        (&self).mul(rhs)
+    }
+}
+
+impl Mul<Tensor> for &Tensor {
+    type Output = Tensor;
+
+    fn mul(self, rhs: Tensor) -> Tensor {
+        self.mul(&rhs)
+    }
+}
+
+impl Mul<Tensor> for Tensor {
+    type Output = Tensor;
+
+    fn mul(self, rhs: Tensor) -> Tensor {
+        (&self).mul(&rhs)
+    }
+}
+
 impl Mul<f32> for &Tensor {
     type Output = Tensor;
 
@@ -721,6 +753,31 @@ impl Div<f32> for &Tensor {
         let mut t = self.clone();
         for i in 0..t.values.len() {
             t.values[i] /= rhs;
+        }
+        t
+    }
+}
+
+impl Div<Tensor> for f32 {
+    type Output = Tensor;
+
+    fn div(self, mut rhs: Tensor) -> Tensor {
+
+        for i in 0..rhs.values.len() {
+            rhs.values[i] = self/rhs[i];
+        }
+        rhs
+    }
+}
+
+impl Div<&Tensor> for f32 {
+    type Output = Tensor;
+
+    fn div(self, rhs: &Tensor) -> Tensor {
+
+        let mut t = rhs.clone();
+        for i in 0..t.values.len() {
+            t.values[i] = self/t[i];
         }
         t
     }

@@ -16,7 +16,7 @@ impl MSE {
 
 impl Loss for MSE {
     fn forward(&self, input: &Tensor, target: &Tensor) -> f32 {
-        (input-target).pow(2.).mean_all()
+        (input-target).powi(2).mean_all()
     } 
 
     fn backward(&mut self, input: Tensor, target: Tensor) -> Tensor {
