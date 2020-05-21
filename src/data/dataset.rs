@@ -28,8 +28,12 @@ impl DataSet {
         (DataSet::new(inp_first, tar_first), DataSet::new(inp_second, tar_second))
     }
     
-    pub fn norm_input(&mut self) {
-        self.input.norm();
+    pub fn norm_input(&mut self) -> (f32, f32) {
+        self.input.norm()
+    }
+
+    pub fn norm_input_with(&mut self, mean: f32, std: f32) {
+        self.input.norm_with(mean, std);
     }
 
     pub fn input_shape(&self) -> [usize; 3] {

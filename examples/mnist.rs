@@ -34,9 +34,9 @@ fn main() {
     let batch_size = 64;
 
     // Init data loaders
-    train_set.norm_input();
-    valid_set.norm_input(); // Should norm with train values
-    //let (train_set, valid_set) = dataset.split(0.8);
+    let (mean, std) = train_set.norm_input();
+    valid_set.norm_input_with(mean, std);
+    
     let train_loader = DataLoader::new(train_set, batch_size, true);
     let valid_loader = DataLoader::new(valid_set, batch_size, false);
 

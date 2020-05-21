@@ -238,9 +238,14 @@ impl Tensor {
         (self.values.iter().map(|val| (val - mean).powi(2)).sum::<f32>()/(self.values.len() as f32)).sqrt()
     }
 
-    pub fn norm(&mut self) {
+    pub fn norm(&mut self) -> (f32, f32) {
         let mean = self.mean_all();
         let std: f32 = (self.values.iter().map(|val| (val - mean).powi(2)).sum::<f32>()/(self.values.len() as f32)).sqrt();
+        self.norm_with(mean, std);
+        (mean, std)
+    }
+
+    pub fn norm_with(&mut self, mean: f32, std: f32) {
         for i in 0..self.values.len() {
             self.values[i] = (self.values[i] - mean) / std;
         }
