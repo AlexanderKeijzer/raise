@@ -1,5 +1,6 @@
+#![feature(proc_macro_hygiene)]
+
 extern crate raise;
-extern crate serde_pickle;
 
 use std::fs::File;
 use raise::*;
@@ -11,10 +12,10 @@ use raise::optimizers::sgd::SGD;
 use raise::data::dataset::DataSet;
 use raise::data::dataloader::DataLoader;
 use raise::layers::sequential::Sequential;
-use serde_pickle as pkl;
+use inline_python::{python, Context};
 
 fn main() {
-    let (mut train_set, mut valid_set) = read_pickle("data/mnist2.pkl");
+    let (mut train_set, mut valid_set) = read_pickle_py("data/mnist.pkl");
     println!("Loaded dataset");
 
     // Init data
@@ -28,7 +29,7 @@ fn main() {
     ]);
 
     let mut loss_func = CrossEntropy::new();
-    let mut optimizer = SGD::new(0.04); //0.04
+    let mut optimizer = SGD::new(0.03);
 
     let batch_size = 64;
 
@@ -44,61 +45,28 @@ fn main() {
     fit(50, &mut model, &mut loss_func, &mut optimizer, &train_loader, &valid_loader);
 }
 
-fn read_pickle(file_path: &str) -> (DataSet, DataSet) {
-    let file = File::open(file_path).unwrap();
-
-    let mut train_val: Vec<f32> = Vec::new();
-    let mut train_targ: Vec<f32> = Vec::new();
-    let mut valid_val: Vec<f32> = Vec::new();
-    let mut valid_targ: Vec<f32> = Vec::new();
-    if let pkl::Value::Tuple(mut data) = pkl::value_from_reader(file).unwrap() {
-        if let pkl::Value::Tuple(valid) = data.pop().unwrap() {
-            decode_set(&mut valid_val, &mut valid_targ, valid);
-        } else {
-            panic!();
-        }
-        if let pkl::Value::Tuple(train) = data.pop().unwrap() {
-            decode_set(&mut train_val, &mut train_targ, train);
-        } else {
-            panic!();
-        }
-    } else {
-        panic!();
-    }
-    (DataSet::new(Tensor::new(train_val, [1, 28*28, 1, 50000]), Tensor::new(train_targ, [1, 1, 1, 50000]).to_one_hot(1)),
-    DataSet::new(Tensor::new(valid_val, [1, 28*28, 1, 10000]), Tensor::new(valid_targ, [1, 1, 1, 10000]).to_one_hot(1)))
+fn read_pickle_py(file_path: &str) -> (DataSet, DataSet) {
     
-}
+    let py_context: Context = python! {
+        import pickle
 
-fn decode_set(x_list: &mut Vec<f32>, y_list: &mut Vec<f32>, mut set: Vec<pkl::Value>) {
-    if let pkl::Value::List(y) = set.pop().unwrap() {
-        for j in 0..y.len() {
-            let v = y[j].clone();
-            y_list.push(match v {
-                pkl::Value::I64(f) => f as f32,
-                _ => { println!("{}", v); panic!(); }
-            });
-        }
-    } else {
-        panic!();
-    }
-    if let pkl::Value::List(x) = set.pop().unwrap() {
-        for i in 0..x.len() {
-            let sublist = match x[i].clone() {
-                pkl::Value::List(sublist) => sublist,
-                _ => panic!()
-            };
-            for j in 0..sublist.len() {
-                let v = sublist[j].clone();
-                x_list.push(match v {
-                    pkl::Value::F64(f) => f as f32,
-                    _ => { println!("{}", v); panic!(); }
-                });
-            }
-        }
-    } else {
-        panic!();
-    }
+        file = open('file_path, "rb")
+        ((x_train, y_train), (x_valid, y_valid), _) = pickle.load(file, encoding="latin-1")
+        file.close()
+        
+        x_train = x_train.flatten().tolist()
+        y_train = y_train.flatten().tolist()
+        x_valid = x_valid.flatten().tolist()
+        y_valid = y_valid.flatten().tolist()
+    };
+
+    let x_train = py_context.get::<Vec<f32>>("x_train");
+    let y_train = py_context.get::<Vec<f32>>("y_train");
+    let x_valid = py_context.get::<Vec<f32>>("x_valid");
+    let y_valid = py_context.get::<Vec<f32>>("y_valid");
+    (DataSet::new(Tensor::new(x_train, [1, 28*28, 1, 50000]), Tensor::new(y_train, [1, 1, 1, 50000]).to_one_hot(1)),
+    DataSet::new(Tensor::new(x_valid, [1, 28*28, 1, 10000]), Tensor::new(y_valid, [1, 1, 1, 10000]).to_one_hot(1)))
+
 }
 
 fn read(file_path: &str) -> DataSet {
