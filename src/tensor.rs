@@ -336,7 +336,7 @@ impl Tensor {
         self
     }
 
-    pub fn outermean3(&self, rhs: &Tensor) -> Tensor {
+    pub fn outersum3(&self, rhs: &Tensor) -> Tensor {
         assert!(self.shape[0] == 1);
         //Accept even if not a column vector as outer product is obv row*column
         assert!(rhs.shape[0] == 1 || rhs.shape[1] == 1);
@@ -346,8 +346,8 @@ impl Tensor {
         let mut result = Tensor::zeros([rhs.shape[0]*rhs.shape[1], self.shape[1], 1, 1]);
 
         for s in 0..s_max {
-            let s_s = &self.values[cmp::min(s, self.shape[3])*self.shape[1]..(cmp::min(s, self.shape[3])+1)*self.shape[1]];
-            let r_s = &rhs.values[cmp::min(s, rhs.shape[3])*rhs.shape[0]*rhs.shape[1]..(cmp::min(s, rhs.shape[3])+1)*rhs.shape[0]*rhs.shape[1]];
+            let s_s = &self.values[cmp::min(s, self.shape[3]-1)*self.shape[1]..(cmp::min(s, self.shape[3]-1)+1)*self.shape[1]];
+            let r_s = &rhs.values[cmp::min(s, rhs.shape[3]-1)*rhs.shape[0]*rhs.shape[1]..(cmp::min(s, rhs.shape[3]-1)+1)*rhs.shape[0]*rhs.shape[1]];
             for j in 0..result.shape[1] {
                 let row_pos = j*result.shape[0];
                 let res = &mut result.values[row_pos..row_pos+result.shape[0]];
@@ -356,7 +356,11 @@ impl Tensor {
                 }
             }
         }
-        result/(s_max as f32)
+        result
+    }
+
+    pub fn outermean3(&self, rhs: &Tensor) -> Tensor {
+        self.outersum3(rhs)/(cmp::max(self.shape[3], rhs.shape[3]) as f32)
     }
 
     pub fn to_one_hot(&self, axis: usize) -> Tensor {
@@ -546,7 +550,7 @@ impl Mul<&Tensor> for &Tensor {
         assert!(self.shape[2]==rhs.shape[2]); // Allow broadcasting?
         assert!(self.shape[3]==rhs.shape[3] || self.shape[3] == 1 || rhs.shape[3] == 1);
 
-        if self.shape[0] == rhs.shape[0] && self.shape[1] == rhs.shape[1] && (self.shape[0] == 0 || self.shape[1] == 0) {
+        if self.shape[0] == rhs.shape[0] && self.shape[1] == rhs.shape[1] && (self.shape[0] == 1 || self.shape[1] == 1) {
             element_wise_mul(self, rhs)
         } else if rhs.shape[0] == 1 {
             matrix_vector_mul(self, rhs)

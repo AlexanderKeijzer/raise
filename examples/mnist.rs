@@ -29,7 +29,7 @@ fn main() {
     ]);
 
     let mut loss_func = CrossEntropy::new();
-    let mut optimizer = SGD::new(0.03);
+    let mut optimizer = SGD::new(0.1);
 
     let batch_size = 64;
 
@@ -42,7 +42,7 @@ fn main() {
 
     //lr_find(&mut model, &mut loss_func, &mut optimizer, &train_loader);
 
-    fit(50, &mut model, &mut loss_func, &mut optimizer, &train_loader, &valid_loader);
+    fit(1, &mut model, &mut loss_func, &mut optimizer, &train_loader, &valid_loader);
 }
 
 fn read_pickle_py(file_path: &str) -> (DataSet, DataSet) {

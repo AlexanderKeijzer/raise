@@ -24,7 +24,7 @@ impl Loss for CrossEntropy {
     } 
 
     fn backward(&mut self, input: Tensor, target: Tensor) -> Tensor {
-        input-target
+        (log_softmax(&input).exp()-target)/(input.shape[3] as f32)
     }
 
     fn take_input(&mut self) -> Tensor {

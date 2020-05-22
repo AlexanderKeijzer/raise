@@ -48,8 +48,8 @@ impl Layer for Linear {
 
     fn backward(&mut self, input: Tensor, output_grad: Tensor) -> Tensor {
 
-        self.weights.gradient = Some(Box::new(output_grad.outermean3(&input)));
-        self.biases.gradient = Some(Box::new(output_grad.mean(3)));
+        self.weights.gradient = Some(Box::new(output_grad.outersum3(&input)));
+        self.biases.gradient = Some(Box::new(output_grad.sum(3)));
 
         &self.weights.transpose()*&output_grad
     }

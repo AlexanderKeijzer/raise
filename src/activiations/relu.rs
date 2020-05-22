@@ -21,7 +21,7 @@ impl Layer for ReLU {
     } 
 
     fn backward(&mut self, input: Tensor, output_grad: Tensor) -> Tensor {
-        &input.is_bigger_(0.)*&output_grad
+        input.is_bigger_(0.)*output_grad
     }
 
     fn take_input(&mut self) -> Tensor {
