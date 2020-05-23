@@ -2,6 +2,7 @@
 
 extern crate raise;
 
+use std::path::Path;
 use std::fs::File;
 use raise::*;
 use raise::tensor::Tensor;
@@ -14,8 +15,10 @@ use raise::data::dataloader::DataLoader;
 use raise::layers::sequential::Sequential;
 use inline_python::{python, Context};
 
+static MNIST_URL: &str = "http://deeplearning.net/data/mnist/mnist.pkl.gz";
+
 fn main() {
-    let (mut train_set, mut valid_set) = read_pickle_py("data/mnist.pkl");
+    let (mut train_set, mut valid_set) = read_or_download_mnist("data/mnist.pkl.gz");
     println!("Loaded dataset");
 
     // Init data
@@ -40,19 +43,23 @@ fn main() {
     let train_loader = DataLoader::new(train_set, batch_size, true);
     let valid_loader = DataLoader::new(valid_set, batch_size, false);
 
-    lr_find(&mut model, &mut loss_func, &mut optimizer, &train_loader);
-
     fit(5, &mut model, &mut loss_func, &mut optimizer, &train_loader, &valid_loader);
 }
 
-fn read_pickle_py(file_path: &str) -> (DataSet, DataSet) {
+fn read_or_download_mnist(file_path: &str) -> (DataSet, DataSet) {
+
+    if !Path::new(file_path).exists() {
+        if let Err(error) = download_mnist(file_path) {
+            panic!(error.to_string());
+        }
+    }
     
     let py_context: Context = python! {
         import pickle
+        import gzip
 
-        file = open('file_path, "rb")
-        ((x_train, y_train), (x_valid, y_valid), _) = pickle.load(file, encoding="latin-1")
-        file.close()
+        with gzip.open('file_path, "rb") as f:
+            ((x_train, y_train), (x_valid, y_valid), _) = pickle.load(f, encoding="latin-1")
         
         x_train = x_train.flatten().tolist()
         y_train = y_train.flatten().tolist()
@@ -69,25 +76,14 @@ fn read_pickle_py(file_path: &str) -> (DataSet, DataSet) {
 
 }
 
-fn read(file_path: &str) -> DataSet {
-    let file = File::open(file_path).unwrap();
-    let mut rdr = csv::Reader::from_reader(file);
-    let mut data: Vec<f32> = Vec::new();
-    let mut target: Vec<f32> = Vec::new();
-    let mut n_records = 0;
-    for result in rdr.records() {
-        let record = result.unwrap();
-        let mut line: Vec<f32> = record.iter().map(|x| x.parse::<f32>().unwrap()).collect();
-
-        let curr_target = line.remove(0).round() as usize;
-        target.append(&mut vec![0.; curr_target]);
-        target.push(1.);
-        target.append(&mut vec![0.; 9-curr_target]);
-
-        data.append(&mut line);
-        n_records += 1;
+fn download_mnist(path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    println!("Downloading MNIST dataset...");
+    let mut resp = reqwest::blocking::get(MNIST_URL)?;
+    if resp.status().is_success() {
+        let mut file = File::create(path)?;
+        resp.copy_to(&mut file)?;
+    } else {
+        println!("{}", resp.status())
     }
-    let data_tensor = Tensor::new(data, [1, 784, 1, n_records]);
-    let target_tensor = Tensor::new(target, [1, 10, 1, n_records]);
-    DataSet::new(data_tensor, target_tensor)
+    Ok(())
 }
