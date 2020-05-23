@@ -15,7 +15,7 @@ pub struct Tensor {
     pub gradient: Option<Box<Tensor>>
 }
 
-// x y c b
+// x y c s
 impl Tensor {
     pub fn new(values:Vec<f32>, shape: [usize; 4]) -> Tensor {
         assert!(values.len() == length_flat_indices(shape));

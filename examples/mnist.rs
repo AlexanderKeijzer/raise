@@ -23,13 +23,13 @@ fn main() {
 
     // Init model
     let mut model = Sequential::new(vec![
-        Box::new(Linear::new([train_set.input_shape()[1], hidden_layer], "pytorch")),
+        Box::new(Linear::new([train_set.input_shape()[1], hidden_layer], "relu")),
         Box::new(ReLU::new()),
-        Box::new(Linear::new([hidden_layer, train_set.target_shape()[1]], "pytorch")),
+        Box::new(Linear::new([hidden_layer, train_set.target_shape()[1]], "")),
     ]);
 
     let mut loss_func = CrossEntropy::new();
-    let mut optimizer = SGD::new(0.1);
+    let mut optimizer = SGD::new(0.05);
 
     let batch_size = 64;
 
@@ -40,9 +40,9 @@ fn main() {
     let train_loader = DataLoader::new(train_set, batch_size, true);
     let valid_loader = DataLoader::new(valid_set, batch_size, false);
 
-    //lr_find(&mut model, &mut loss_func, &mut optimizer, &train_loader);
+    lr_find(&mut model, &mut loss_func, &mut optimizer, &train_loader);
 
-    fit(1, &mut model, &mut loss_func, &mut optimizer, &train_loader, &valid_loader);
+    fit(5, &mut model, &mut loss_func, &mut optimizer, &train_loader, &valid_loader);
 }
 
 fn read_pickle_py(file_path: &str) -> (DataSet, DataSet) {

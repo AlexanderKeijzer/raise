@@ -10,27 +10,9 @@ pub struct Linear {
 }
 
 impl Linear {
-    pub fn new(shape: [usize; 2], init: &str) -> Linear {
+    pub fn new(shape: [usize; 2], init_type: &str) -> Linear {
 
-        let weights;
-        if init.eq("relu") {
-            weights = Tensor::rand([shape[0], shape[1], 1, 1])*(2./(shape[0] as f32)).sqrt();
-        } else if init.eq("pytorch") {
-            let gain = (2_f32/(1_f32+5_f32.sqrt().powi(2))).sqrt();
-            let std = gain/((shape[0] as f32).sqrt());
-            let bound = 3_f32.sqrt()*std;
-            weights = Tensor::uniform([shape[0], shape[1], 1, 1], -bound, bound)
-        } else {
-            weights = Tensor::rand([shape[0], shape[1], 1, 1])*(2./(shape[0] as f32)).sqrt();
-        }
-
-        let biases;
-        if init.eq("pytorch") {
-            let bound = 1_f32/(shape[0] as f32).sqrt();
-            biases = Tensor::uniform([1, shape[1], 1, 1], -bound, bound)
-        } else {
-            biases = Tensor::zeros([1, shape[1], 1, 1]);
-        }
+        let (weights, biases) = init(shape, init_type);
 
         Linear {
             input: None,
@@ -65,4 +47,27 @@ impl Layer for Linear {
     fn set_input(&mut self, tensor: Tensor) {
         self.input = Some(tensor);
     }
+}
+
+fn init(shape: [usize; 2], init_type: &str) -> (Tensor, Tensor) {
+    let weights;
+    if init_type.eq("relu") {
+        weights = Tensor::rand([shape[0], shape[1], 1, 1])*(2./(shape[0] as f32)).sqrt();
+    } else if init_type.eq("pytorch") {
+        let gain = (2_f32/(1_f32+5_f32.sqrt().powi(2))).sqrt();
+        let std = gain/((shape[0] as f32).sqrt());
+        let bound = 3_f32.sqrt()*std;
+        weights = Tensor::uniform([shape[0], shape[1], 1, 1], -bound, bound)
+    } else {
+        weights = Tensor::rand([shape[0], shape[1], 1, 1])*(2./(shape[0] as f32)).sqrt();
+    }
+
+    let biases;
+    if init_type.eq("pytorch") {
+        let bound = 1_f32/(shape[0] as f32).sqrt();
+        biases = Tensor::uniform([1, shape[1], 1, 1], -bound, bound)
+    } else {
+        biases = Tensor::zeros([1, shape[1], 1, 1]);
+    }
+    (weights, biases)
 }

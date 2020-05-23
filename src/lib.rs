@@ -10,8 +10,6 @@ pub mod losses;
 pub mod optimizers;
 pub mod data;
 
-extern crate rand;
-
 use tensor::Tensor;
 use std::time::Instant;
 use layers::layer::Layer;
@@ -89,7 +87,7 @@ pub fn lr_find(model_ref: &dyn Layer, loss_func_ref: &dyn Loss, optimizer_ref: &
         }
         losses.push(loss);
     }
-    plot::plot2dlog(lr_steps, losses);
+    plot::plot2dlog(lr_steps, losses, "Learning Rate [-]", "Loss @ 20 Steps [-]");
 }
 
 fn accuracy(prediction: &Tensor, target: &Tensor) -> f32 {

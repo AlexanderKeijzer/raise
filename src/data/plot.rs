@@ -18,30 +18,35 @@ pub fn imshow(tensor: &Tensor, im_shape: Option<[usize; 2]>) {
     }
 }
 
-pub fn plot1d(vec: Vec<f32>) {
+pub fn plot1d(vec: Vec<f32>, label: &str) {
     python! {
         import matplotlib.pyplot as plt
 
         plt.plot('vec)
+        plt.ylabel('label)
         plt.show()
     }
 }
 
-pub fn plot2d(x: Vec<f32>, y: Vec<f32>) {
+pub fn plot2d(x: Vec<f32>, y: Vec<f32>, xlabel: &str, ylabel: &str) {
     python! {
         import matplotlib.pyplot as plt
 
         plt.plot('x, 'y)
+        plt.xlabel('xlabel)
+        plt.ylabel('ylabel)
         plt.show()
     }
 }
 
-pub fn plot2dlog(x: Vec<f32>, y: Vec<f32>) {
+pub fn plot2dlog(x: Vec<f32>, y: Vec<f32>, xlabel: &str, ylabel: &str) {
     python! {
         import matplotlib.pyplot as plt
 
         plt.plot('x, 'y)
         plt.xscale("log")
+        plt.xlabel('xlabel)
+        plt.ylabel('ylabel)
         plt.show()
     }
 }
