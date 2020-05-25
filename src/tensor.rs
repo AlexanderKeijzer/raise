@@ -102,7 +102,6 @@ impl Tensor {
     }
 
     pub fn to_vec(&self) -> Vec<f32> {
-        //Make sure tensor is destroyed and move values instead of cloning?
         self.values.clone()
     }
 
@@ -439,20 +438,18 @@ where T: Fn(&[f32], &[f32], &mut [f32]) {
     let as_t1 =  get_axis_steps(t1.shape);
     let as_t2 =  get_axis_steps(t2.shape);
     let as_result =  get_axis_steps(result.shape);
-    for b in 0..t2.shape[3] {
-        let b_t1 = if t1.shape[3] == 1 {0} else {b};
-        let b_t2 = if t2.shape[3] == 1 {0} else {b};
-        for c in 0..t1.shape[2] {
-            let s_t1 = b_t1*as_t1[3]+c*as_t1[2];
-            let s_t2 = b_t2*as_t2[3]+c*as_t2[2];
-            let s_result = b*as_result[3]+c*as_result[2];
-
-            let sample_t1 = &t1.values[s_t1..s_t1+as_t1[2]];
-            let sample_t2 = &t2.values[s_t2..s_t2+as_t2[2]];
-            let out = &mut result.values[s_result..s_result+as_result[2]];
-            operation(sample_t1, sample_t2, out);
-        }
-    }
+    
+    result.values.chunks_mut(as_result[3])
+    .zip(t1.values.chunks(as_t1[3]).cycle())
+    .zip(t2.values.chunks(as_t2[3]).cycle())
+    .for_each(|((outb, t1b), t2b)| {
+        outb.chunks_mut(as_result[2])
+        .zip(t1b.chunks(as_t1[2]).cycle())
+        .zip(t2b.chunks(as_t2[2]).cycle())
+        .for_each(|((outc, t1c), t2c)| {
+            operation(t1c, t2c, outc);
+        });
+    });
 }
 
 /*
@@ -528,10 +525,19 @@ fn broadcast<T>(t1: TensorType, t2: TensorType, operation: T) -> Tensor
             let cb = if broadcast_axis[2] {bb} else {bb + c*step_size_bc[2]};
             for j in 0..t_owner.shape[1] {
                 let jb = if broadcast_axis[1] {cb} else {cb + j*step_size_bc[1]};
-                for i in 0..t_owner.shape[0] {
-                    let ib = if broadcast_axis[0] {jb} else {jb + i};
-                    let index = b*step_size[3]+c*step_size[2]+j*step_size[1]+i;
-                    t_owner.values[index] = operation(t_owner.values[index], t_broadcaster.values[ib]);
+                let ind = b*step_size[3]+c*step_size[2]+j*step_size[1];
+                let t_own = &mut t_owner.values[ind..ind+t_owner.shape[0]];
+
+                if broadcast_axis[0] {
+                    let to_bc = t_broadcaster.values[jb];
+                    for i in 0..t_own.len() {
+                        t_own[i] = operation(t_own[i], to_bc);
+                    }
+                } else {
+                    let t_bct = &t_broadcaster.values[jb..jb+t_own.len()];
+                    for i in 0..t_own.len() {
+                        t_own[i] = operation(t_own[i], t_bct[i]);
+                    }
                 }
             }
         }
@@ -588,19 +594,15 @@ fn matrix_vector_mul(matrix: &Tensor, vector: &Tensor) -> Tensor {
     for_each_sample(matrix, vector, &mut result, |mat, vec, out| {
         for j in 0..matrix.shape[1] {
             let row: &[f32] = &mat[j*matrix.shape[0]..((j+1)*matrix.shape[0])];
+            assert!(row.len()==vec.len());
             
-            /*
             let mut res: f32 = 0.0;
-            for i in 0..matrix.shape[0] {
+            for i in 0..row.len() {
                 // res = mat[i,j] * vec[i]
                 res += row[i]*vec[i];
             }
             // vec[j] = res
             out[j] = res;
-            */
-            
-            
-            out[j] = row.iter().zip(vec.iter()).map(|(r, v)| r*v).sum::<f32>();
         }
     });
     result
@@ -609,10 +611,11 @@ fn matrix_vector_mul(matrix: &Tensor, vector: &Tensor) -> Tensor {
 fn vector_vector_mul(v1: &Tensor, v2: &Tensor) -> Tensor {
     let mut result = Tensor::zeros([v2.shape[0], v1.shape[1], v1.shape[2], cmp::max(v1.shape[3], v2.shape[3])]);
     for_each_sample(v1, v2, &mut result, |vec1, vec2, out| {
-        for j in 0..v1.shape[1] {
-            for i in 0..v2.shape[0] {
+        for j in 0..vec1.len() {
+            let row = &mut out[j*v2.shape[0]..j*v2.shape[0]+vec2.len()];
+            for i in 0..vec2.len() {
                 // mat[i,j] = vec[i] * vec[j]
-                out[i+j*v2.shape[0]] = vec1[j]*vec2[i];
+                row[i] = vec1[j]*vec2[i];
             }
         }
     });
@@ -622,6 +625,7 @@ fn vector_vector_mul(v1: &Tensor, v2: &Tensor) -> Tensor {
 fn element_wise_mul(v1: &Tensor, v2: &Tensor) -> Tensor {
     let mut result = v1.clone();
     for_each_sample(v1, v2, &mut result, |_, vec2, out| {
+        assert!(out.len()==vec2.len());
         for i in 0..vec2.len() {
             out[i] *= vec2[i];
         }
@@ -773,7 +777,7 @@ impl Div<Tensor> for f32 {
     fn div(self, mut rhs: Tensor) -> Tensor {
 
         for i in 0..rhs.values.len() {
-            rhs.values[i] = self/rhs[i];
+            rhs.values[i] = self/rhs.values[i];
         }
         rhs
     }
@@ -786,7 +790,7 @@ impl Div<&Tensor> for f32 {
 
         let mut t = rhs.clone();
         for i in 0..t.values.len() {
-            t.values[i] = self/t[i];
+            t.values[i] = self/t.values[i];
         }
         t
     }
