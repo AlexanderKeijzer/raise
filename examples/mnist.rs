@@ -3,7 +3,7 @@
 extern crate raise;
 
 use std::path::Path;
-use std::fs::File;
+use std::fs::{File, create_dir};
 use raise::*;
 use raise::tensor::Tensor;
 use raise::layers::linear::Linear;
@@ -48,7 +48,12 @@ fn main() {
 
 fn read_or_download_mnist(file_path: &str) -> (DataSet, DataSet) {
 
-    if !Path::new(file_path).exists() {
+    let pth = Path::new(file_path);
+
+    if !pth.exists() {
+        if !pth.parent().unwrap().exists() {
+            create_dir(pth.parent().unwrap());
+        }
         if let Err(error) = download_mnist(file_path) {
             panic!(error.to_string());
         }
