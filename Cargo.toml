@@ -14,7 +14,7 @@ inline-python = "0.5.1"
 raise-graph = { path = "../raise-graph" }
 
 [dev-dependencies]
-csv = "1.1"
+reqwest = { version = "0.10.4", features = ["blocking"] }
 
 [profile.release]
 debug = true
